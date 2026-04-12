@@ -19,8 +19,10 @@ final class PhotoEntry {
     var note: String?
     /// 是否星标
     var isFavorite: Bool
-    /// Vision 检测到的人脸数量（为未来「只看含人脸的照片」开关预留，0 表示未检测）
+    /// Vision 检测到的人脸数量（导入时必定 > 0，因为没人脸的照片会被过滤掉）
     var faceCount: Int
+    /// Vision 场景分类自动标签（中文），例如 ["宝宝", "食物", "室内"]
+    var autoTags: [String]
     /// 记录入库时间
     var importedAt: Date
 
@@ -33,6 +35,7 @@ final class PhotoEntry {
         note: String? = nil,
         isFavorite: Bool = false,
         faceCount: Int = 0,
+        autoTags: [String] = [],
         importedAt: Date = .now
     ) {
         self.assetLocalId = assetLocalId
@@ -43,6 +46,7 @@ final class PhotoEntry {
         self.note = note
         self.isFavorite = isFavorite
         self.faceCount = faceCount
+        self.autoTags = autoTags
         self.importedAt = importedAt
     }
 }
