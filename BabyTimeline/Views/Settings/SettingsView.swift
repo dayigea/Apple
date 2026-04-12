@@ -59,9 +59,13 @@ struct SettingsView: View {
                 }
 
                 // 相册同步
+                // 认人
+                ReferenceFaceSection(baby: baby)
+
+                // 相册同步
                 Section {
                     Button {
-                        Task { await importer.run(birthday: baby.birthday, context: context) }
+                        Task { await importer.run(baby: baby, context: context) }
                     } label: {
                         switch importer.phase {
                         case .scanning(let p, let t):
@@ -152,5 +156,153 @@ private struct AvatarCircle: View {
         }
         .frame(width: 96, height: 96)
         .clipShape(Circle())
+    }
+}
+
+// MARK: - 认人参考照
+
+/// 让用户选一张「女儿本人、清晰正脸」的照片作为认人基准，
+/// 并在这里提供匹配阈值滑块。
+private struct ReferenceFaceSection: View {
+    @Bindable var baby: Baby
+
+    @Environment(\.modelContext) private var context
+
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var isProcessing = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+
+    var body: some View {
+        Section {
+            // 当前状态
+            HStack(spacing: 12) {
+                Image(systemName: baby.referenceFacePrintData != nil
+                      ? "person.crop.circle.badge.checkmark"
+                      : "person.crop.circle.badge.questionmark")
+                    .font(.title2)
+                    .foregroundStyle(baby.referenceFacePrintData != nil ? .green : .secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(baby.referenceFacePrintData != nil ? "已开启认人" : "认人未设置")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text(baby.referenceFacePrintData != nil
+                         ? "扫描时只纳入含女儿本人的照片"
+                         : "扫描时任何含人脸的照片都会纳入")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+
+            // 选照片
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Label(
+                    baby.referenceFacePrintData == nil ? "选一张女儿的认人照片" : "更换认人照片",
+                    systemImage: "person.crop.rectangle"
+                )
+            }
+
+            // 清除
+            if baby.referenceFacePrintData != nil {
+                Button(role: .destructive) {
+                    baby.referenceFacePrintData = nil
+                    try? context.save()
+                    successMessage = "已清除认人照片"
+                } label: {
+                    Label("清除认人照片", systemImage: "trash")
+                }
+            }
+
+            // 阈值
+            if baby.referenceFacePrintData != nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("匹配严格程度")
+                            .font(.subheadline)
+                        Spacer()
+                        Text(strictnessLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: $baby.faceMatchThreshold,
+                        in: 10...30,
+                        step: 0.5
+                    )
+                    .onChange(of: baby.faceMatchThreshold) {
+                        try? context.save()
+                    }
+                    HStack {
+                        Text("严格")
+                        Spacer()
+                        Text("宽松")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            // 状态提示
+            if isProcessing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("正在分析人脸…").font(.footnote)
+                }
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+            if let successMessage {
+                Text(successMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        } header: {
+            Text("认人")
+        } footer: {
+            Text("选一张只包含女儿本人的清晰正脸照，App 会生成人脸指纹。之后扫描时只保留含有她本人的照片。改了认人照或阈值后，记得「重新扫描相册」。")
+        }
+        .onChange(of: pickerItem) {
+            Task { await generateReference() }
+        }
+    }
+
+    private var strictnessLabel: String {
+        switch baby.faceMatchThreshold {
+        case ..<14: return "很严 (\(String(format: "%.1f", baby.faceMatchThreshold)))"
+        case 14..<20: return "适中 (\(String(format: "%.1f", baby.faceMatchThreshold)))"
+        default: return "宽松 (\(String(format: "%.1f", baby.faceMatchThreshold)))"
+        }
+    }
+
+    private func generateReference() async {
+        guard let pickerItem else { return }
+        errorMessage = nil
+        successMessage = nil
+        isProcessing = true
+        defer { isProcessing = false }
+
+        guard
+            let data = try? await pickerItem.loadTransferable(type: Data.self),
+            let uiImage = UIImage(data: data),
+            let cgImage = uiImage.cgImage
+        else {
+            errorMessage = "读取照片失败，换一张试试。"
+            return
+        }
+
+        guard let printData = await FaceRecognitionService.generateReferencePrint(from: cgImage) else {
+            errorMessage = "没在这张照片里找到清晰的人脸。请换一张正脸照。"
+            return
+        }
+
+        baby.referenceFacePrintData = printData
+        try? context.save()
+        successMessage = "认人照片已设置。记得去「重新扫描相册」。"
     }
 }

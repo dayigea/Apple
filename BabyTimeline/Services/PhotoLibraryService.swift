@@ -55,11 +55,11 @@ enum PhotoLibraryService {
             .flatMap { $0.cgImage }
     }
 
-    /// 请求一张用于 UI 显示的缩略图（320 px 一般够 List 里铺满）
+    /// 请求一张用于 UI 显示的缩略图（320 pt 一般够 List 里铺满）
     static func requestThumbnail(for asset: PHAsset, pointSize: CGFloat = 320) async -> UIImage? {
-        let scale = await UIScreen.main.scale
-        let pixelSize = CGSize(width: pointSize * scale, height: pointSize * scale)
-        return await requestImage(for: asset, targetSize: pixelSize)
+        // 所有现代 iPhone 都是 @3x；iPad 偶尔 @2x 但拿大了也无妨
+        let pixel = pointSize * 3
+        return await requestImage(for: asset, targetSize: CGSize(width: pixel, height: pixel))
     }
 
     /// 请求一张全屏原图（用于 PhotoDetailView）

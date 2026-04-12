@@ -2,47 +2,17 @@ import CoreGraphics
 import Foundation
 import Vision
 
-/// 对一张图片做人脸检测 + 场景分类。
-/// - 人脸检测结果用于「是否纳入时间线」的硬性过滤
-/// - 场景分类结果翻译为中文标签，作为照片自动内容摘要
+/// 场景分类：把一张 CGImage 送给 Vision，得到中文化的内容标签。
+/// 人脸检测与认人匹配都在 `FaceRecognitionService` 里，本服务只负责内容分类。
 enum ImageAnalysisService {
-
-    struct Result {
-        let faceCount: Int
-        /// 中文标签，已按 confidence 降序去重
-        let tags: [String]
-    }
-
-    /// 对单张 CGImage 做分析。纯异步，可在后台队列调用。
-    static func analyze(_ image: CGImage) async -> Result {
-        async let faces = detectFaces(image)
-        async let tags = classifyScene(image)
-        return Result(faceCount: await faces, tags: await tags)
-    }
-
-    // MARK: - 人脸检测
-
-    private static func detectFaces(_ image: CGImage) async -> Int {
-        await withCheckedContinuation { continuation in
-            let request = VNDetectFaceRectanglesRequest { request, _ in
-                let count = (request.results as? [VNFaceObservation])?.count ?? 0
-                continuation.resume(returning: count)
-            }
-            let handler = VNImageRequestHandler(cgImage: image, options: [:])
-            do {
-                try handler.perform([request])
-            } catch {
-                continuation.resume(returning: 0)
-            }
-        }
-    }
 
     // MARK: - 场景分类
 
     private static let minConfidence: Float = 0.30
     private static let maxTagCount = 5
 
-    private static func classifyScene(_ image: CGImage) async -> [String] {
+    /// 返回一组已翻译成中文的场景标签，按 confidence 降序去重。
+    static func classifyScene(_ image: CGImage) async -> [String] {
         await withCheckedContinuation { continuation in
             let request = VNClassifyImageRequest { request, _ in
                 guard let observations = request.results as? [VNClassificationObservation] else {

@@ -27,14 +27,14 @@ struct TimelineView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     ImportStatusButton(phase: importer.phase) {
-                        Task { await importer.run(birthday: baby.birthday, context: context) }
+                        Task { await importer.run(baby: baby, context: context) }
                     }
                 }
             }
             .task {
                 guard !hasRunInitialImport else { return }
                 hasRunInitialImport = true
-                await importer.run(birthday: baby.birthday, context: context)
+                await importer.run(baby: baby, context: context)
             }
         }
     }
