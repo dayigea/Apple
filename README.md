@@ -27,6 +27,7 @@
 Apple/
 ├── project.yml                 # XcodeGen 配置
 ├── bootstrap.sh                # 一键准备脚本（macOS）
+├── cleanup-xcode.sh            # 清理 Xcode 磁盘占用的脚本
 ├── README.md
 └── BabyTimeline/
     ├── BabyTimelineApp.swift   # @main
@@ -83,6 +84,23 @@ Apple/
 ---
 
 ## 怎么跑起来（最快路径）
+
+### ⚠️ 如果您的 Mac 磁盘空间紧张，先看这里
+
+Xcode 本身 **~15 GB**，但**模拟器 runtime 每个 iOS 版本额外 ~8 GB**，这是大头。
+好消息：**这个项目只跑真机（您自己的 iPhone），完全不需要模拟器。** 可以这样最小化磁盘占用：
+
+1. **第一次装 Xcode 时**（从 App Store 或 developer.apple.com 下的 XIP）：
+   - 装完第一次打开 Xcode 会弹「选择要下载的平台」
+   - **全部取消勾选 / 点 Cancel / 关掉这个窗口**，iOS SDK 已经在 Xcode.app 里了，不需要下载任何额外 runtime
+2. **如果已经装了模拟器 runtime**，用项目根目录下的清理脚本看看占用，并可选清理：
+   ```bash
+   ./cleanup-xcode.sh           # 只打印占用报告（不删任何东西）
+   ./cleanup-xcode.sh --clean   # 真正清理模拟器、DerivedData、缓存
+   ```
+3. **只保留您 iPhone 当前 iOS 版本对应的 DeviceSupport**（清理脚本会告诉您怎么手动删）
+
+这样整个 Xcode 磁盘占用可以压到 **~15 GB**。
 
 ### 方案 A：一键脚本（推荐）
 
