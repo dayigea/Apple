@@ -14,6 +14,8 @@ struct SetupView: View {
     @State private var gender: String? = "girl"
     @State private var avatarItem: PhotosPickerItem?
     @State private var avatarData: Data?
+    @State private var saveError: String?
+    @State private var isSaving: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -53,13 +55,22 @@ struct SetupView: View {
 
                 Section {
                     Button(action: save) {
-                        Text("开始记录成长时光")
+                        Text(isSaving ? "正在保存…" : "开始记录成长时光")
                             .frame(maxWidth: .infinity)
                             .fontWeight(.semibold)
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(
+                        isSaving
+                        || name.trimmingCharacters(in: .whitespaces).isEmpty
+                    )
+
+                    if let saveError {
+                        Text(saveError)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
                 } footer: {
-                    Text("接下来 App 会请求相册权限，自动把出生之后所有含人脸的照片整理成时间线。")
+                    Text("保存后可以在「时间线」页面手动开始扫描相册，App 会自动把含人脸的照片整理成时间线。")
                 }
             }
             .navigationTitle("欢迎")
@@ -75,14 +86,26 @@ struct SetupView: View {
     private func save() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
+        guard !isSaving else { return }
+        isSaving = true
+        saveError = nil
+
         let baby = Baby(
             name: trimmed,
             birthday: birthday,
             gender: gender,
             avatarData: avatarData
         )
-        context.insert(baby)
-        try? context.save()
+        do {
+            context.insert(baby)
+            try context.save()
+        } catch {
+            // 把错误显示出来，不要静默崩溃
+            isSaving = false
+            saveError = "保存失败：\(error.localizedDescription)"
+            // 回滚一下，避免下次重复 insert
+            context.delete(baby)
+        }
     }
 
     private func loadAvatar() async {

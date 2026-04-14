@@ -11,13 +11,14 @@ struct TimelineView: View {
     private var entries: [PhotoEntry]
 
     @State private var importer = PhotoImporter()
-    @State private var hasRunInitialImport = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if entries.isEmpty {
-                    EmptyTimelineView(phase: importer.phase)
+                    EmptyTimelineView(phase: importer.phase) {
+                        Task { await importer.run(baby: baby, context: context) }
+                    }
                 } else {
                     TimelineList(baby: baby, entries: entries)
                 }
@@ -30,11 +31,6 @@ struct TimelineView: View {
                         Task { await importer.run(baby: baby, context: context) }
                     }
                 }
-            }
-            .task {
-                guard !hasRunInitialImport else { return }
-                hasRunInitialImport = true
-                await importer.run(baby: baby, context: context)
             }
         }
     }
@@ -98,9 +94,10 @@ private struct TimelineList: View {
 
 private struct EmptyTimelineView: View {
     let phase: PhotoImporter.Phase
+    let onStart: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
@@ -117,14 +114,33 @@ private struct EmptyTimelineView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            if showStartButton {
+                Button(action: onStart) {
+                    Text("开始扫描相册")
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.borderedProminent)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var showStartButton: Bool {
+        switch phase {
+        case .idle, .finished, .failed:
+            return true
+        case .requestingAuth, .scanning:
+            return false
+        }
     }
 
     private var message: String {
         switch phase {
         case .idle:
-            return "还没有照片\n点击右上角按钮开始扫描相册"
+            return "还没有照片\n点击下面的按钮开始扫描相册"
         case .requestingAuth:
             return "正在请求相册权限…"
         case .scanning:

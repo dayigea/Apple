@@ -23,7 +23,12 @@
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchScreen</key>
-    <dict/>
+    <dict>
+        <key>UIColorName</key>
+        <string>AccentColor</string>
+        <key>UIImageRespectsSafeAreaInsets</key>
+        <true/>
+    </dict>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
