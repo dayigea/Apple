@@ -1,4 +1,4 @@
-# BabyTimeline · 宝贝时光
+# 苹果长大了 · BabyTimeline
 
 给女儿做的 iOS 私人成长时间线 App。
 
@@ -25,15 +25,19 @@
 
 ```
 Apple/
-├── project.yml                 # XcodeGen 配置
+├── project.yml                 # XcodeGen 配置（也是 Info.plist 的真相源）
 ├── bootstrap.sh                # 一键准备脚本（macOS）
+├── run-on-device.sh            # 一键 build + 装到 iPhone 上
 ├── cleanup-xcode.sh            # 清理 Xcode 磁盘占用的脚本
+├── scripts/
+│   └── make-app-icon.py        # 重新生成 App 图标
 ├── README.md
 └── BabyTimeline/
     ├── BabyTimelineApp.swift   # @main
     ├── RootView.swift
-    ├── Info.plist
+    ├── Info.plist              # 不要手改！由 project.yml 生成
     ├── Assets.xcassets/
+    │   └── AppIcon.appiconset/AppIcon.png
     ├── Models/
     │   ├── Baby.swift
     │   ├── PhotoEntry.swift
@@ -209,3 +213,90 @@ open BabyTimeline.xcodeproj
 
 **Q: 为什么不把 `.xcodeproj` 提交到 Git？**
 `.xcodeproj/project.pbxproj` 是一个不断变化的大文件，Git diff 基本没法读。`project.yml` 才几十行、人能看懂，改动一目了然。用 `./bootstrap.sh` 或 `xcodegen generate` 随时重新生成即可。
+
+---
+
+## 给别人用（分发）
+
+iOS App 没有 Android 那种"发个 apk 文件就行"的自由 —— 必须经过 Apple 的签名体系。能不能给别人用 / 怎么给，**完全取决于你愿不愿意花 $99/年开发者账号**。下面把所有路径列清楚：
+
+### 选项 A：免费 Apple ID（你现在的状态）
+**只能装到「跟你登录同一个 Apple ID 的设备」上。** 给别人用只有两个不太优雅的办法：
+- 让对方在他自己的 Mac 上，用**你的 Apple ID** 登录 Xcode → 拿这份代码 → build 装到他自己的 iPhone。需要他有 Mac、有数据线、要折腾。
+- 或者你拿过他的 iPhone，用你的 Mac + 你的 Apple ID build 一次装上去。证书 **7 天后过期**，过期后他这个 App 打不开 → 你得再拿过来 build 一次。
+- ❌ 不支持远程发个链接就能装。
+
+### 选项 B：$99/年 Apple Developer Program + TestFlight ⭐推荐
+**这是给家人朋友用的最优解，没有之一。** 步骤：
+
+1. 去 https://developer.apple.com/programs 注册个人账号，付 $99（≈¥700/年）
+2. Xcode 里把项目的 Team 切到这个付费账号
+3. `Product → Archive` → `Distribute App → TestFlight & App Store`
+4. Xcode 自动上传到 App Store Connect
+5. 在 https://appstoreconnect.apple.com 给这个 build 加测试员：
+   - **内部测试**（最多 100 人，他们必须在你的 App Store Connect 团队里）
+   - **外部测试**（最多 10000 人，**只要邮箱**就行，对方不需要 Apple ID 在你团队里）
+6. 把 TestFlight 邀请链接发给老婆/外公外婆/任何想用的人
+7. 对方手机上装一个免费的「TestFlight」App → 点你的链接 → 一键安装「苹果长大了」
+
+好处：
+- 对方完全不用碰 Mac、Xcode、数据线、UDID
+- Build 在 TestFlight 上 **90 天有效**（不是 7 天）
+- 你 push 新版本，对方 TestFlight 里点一下「更新」就好
+- 比上 App Store 简单太多（不用过 App Review 的隐私评估）
+
+成本：$99/年 + 一次性 30 分钟操作。
+
+### 选项 C：$99 + Ad Hoc
+跟 B 差不多但更原始：你收集每个用户的 iPhone **UDID**（设备唯一码），在开发者后台手动加进 provisioning profile，build 出 `.ipa`，发给对方让他用 Apple Configurator / Finder 装。**没有任何理由在 2025 年还选 Ad Hoc，TestFlight 完虐它。**
+
+### 选项 D：上架 App Store
+也是 $99/年同一个账号，但需要：
+- 提交 App Review（首次审核 1–3 天，可能被拒要改）
+- 写 App Store 描述、隐私政策、截图
+- 这个 App 用了相册和位置，App Review 要求**详细解释为什么需要**
+
+如果你只是想给认识的人用，**不要走这条路，纯纯给自己找罪受**。直接 TestFlight 就够。
+
+### 选项 E：用别人的付费账号
+如果你有朋友/同事已经是 Apple 开发者，可以请他帮你上传 TestFlight，把外部测试员加成你的家人邮箱。零成本，但你得求人。
+
+### 我的推荐
+
+| 受众 | 推荐 |
+| --- | --- |
+| 只你自己用 | **不花钱**，按现在的方式 7 天重 build 一次 |
+| 给一两个家人（妈妈、老公） | **$99/年 + TestFlight**，一劳永逸 |
+| 想给十几个家人朋友 | 同上，TestFlight |
+| 真打算让陌生人下载 | 上 App Store，准备好被审核折腾 |
+
+**对你这个使用场景（女儿成长记录 + 想分享给家人），结论是：买一年 Apple Developer Program，走 TestFlight。** 一年 ¥700 换全家无痛安装、无痛更新、build 90 天有效，完全值得。
+
+### 如果走 TestFlight，代码这边需要改什么？
+
+几乎不用改，但有几点要注意：
+1. **Bundle Identifier 必须全网唯一**：现在 `com.personal.babytimeline` 是占位的，改成 `com.你的英文名.appletimeline` 之类的（在 `project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER` 里改）
+2. **CFBundleVersion** 每次上传都要递增（1 → 2 → 3 …）。在 `project.yml` 的 `info.properties.CFBundleVersion` 里改
+3. **App Icon** 必须有 1024×1024 PNG，**没透明通道**。本仓库已经用 `scripts/make-app-icon.py` 自动生成，TestFlight 不会拒
+4. **Privacy Manifest**：iOS 17+ 上传 TestFlight 时 Apple 会要求声明隐私使用。我们用了 Photos / Location / Vision，对应在 App Store Connect 的「数据使用」表里如实勾选即可，App 自身的 Info.plist 已经写了 `NSPhotoLibraryUsageDescription` / `NSLocationWhenInUseUsageDescription`
+
+## 改 App 图标
+
+```bash
+python3 scripts/make-app-icon.py
+```
+
+会重新生成 `BabyTimeline/Assets.xcassets/AppIcon.appiconset/AppIcon.png`。想改样式直接编辑那个脚本里的颜色、形状参数，或者你也可以**直接把自己设计好的 1024×1024 PNG 命名成 `AppIcon.png` 放进 `BabyTimeline/Assets.xcassets/AppIcon.appiconset/` 替换掉**，然后 `xcodegen generate` + Xcode 重新 build 就生效了。
+
+唯一要求：
+- 必须是 **1024×1024** 像素
+- 必须是 **PNG**
+- **不能有透明通道**（必须是纯 RGB，不能是 RGBA）
+
+## 改 App 名字
+
+在 `project.yml` 里改这一行：
+```yaml
+CFBundleDisplayName: 苹果长大了
+```
+然后 `xcodegen generate` 重新 build。`CFBundleDisplayName` 是桌面图标下面那行字，可以是任意 Unicode 字符（包括中文、emoji）。
