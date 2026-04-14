@@ -13,7 +13,7 @@ final class PhotoEntry {
     var latitude: Double?
     /// GPS 经度，可能为空
     var longitude: Double?
-    /// 反查到的中文地名，例如「北京市朝阳区」
+    /// 反查到的中文地名,例如「北京市朝阳区」
     var placeName: String?
     /// 用户手写的备注
     var note: String?
@@ -21,10 +21,25 @@ final class PhotoEntry {
     var isFavorite: Bool
     /// Vision 检测到的人脸数量（导入时必定 > 0，因为没人脸的照片会被过滤掉）
     var faceCount: Int
-    /// Vision 场景分类自动标签（中文），例如 ["宝宝", "食物", "室内"]
-    var autoTags: [String]
+    /// 自动标签的 JSON 编码存储。
+    ///
+    /// 不直接声明 `[String]`：iOS 18 的 SwiftData 对 `Array<String>` 走的是
+    /// CoreData 的 transformable 路径，会去找一个名为 "Array" 的 Obj-C 类，
+    /// 找不到就 schema 直接挂掉。所以这里手动序列化成 JSON Data 绕过去。
+    var autoTagsData: Data
     /// 记录入库时间
     var importedAt: Date
+
+    /// Vision 场景分类自动标签（中文），例如 ["宝宝", "食物", "室内"]
+    /// 透明转发到底层的 `autoTagsData`，不被 SwiftData 直接持久化。
+    var autoTags: [String] {
+        get {
+            (try? JSONDecoder().decode([String].self, from: autoTagsData)) ?? []
+        }
+        set {
+            autoTagsData = (try? JSONEncoder().encode(newValue)) ?? Data("[]".utf8)
+        }
+    }
 
     init(
         assetLocalId: String,
@@ -46,7 +61,7 @@ final class PhotoEntry {
         self.note = note
         self.isFavorite = isFavorite
         self.faceCount = faceCount
-        self.autoTags = autoTags
+        self.autoTagsData = (try? JSONEncoder().encode(autoTags)) ?? Data("[]".utf8)
         self.importedAt = importedAt
     }
 }
