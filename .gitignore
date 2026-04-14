@@ -14,6 +14,8 @@ xcuserdata/
 # XcodeGen 生成的项目文件（源头是 project.yml）
 *.xcodeproj/
 *.xcworkspace/
+# Info.plist 由 project.yml 的 info.properties 生成，不要手动编辑
+BabyTimeline/Info.plist
 
 # Swift Package Manager
 .build/

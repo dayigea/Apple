@@ -20,10 +20,38 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: BabyTimeline
+        excludes:
+          - "Info.plist"
     resources:
       - path: BabyTimeline/Assets.xcassets
+    # XcodeGen 会按下面的 properties 生成 BabyTimeline/Info.plist。
+    # 不要在 properties 之外手改那个文件——每次 xcodegen 会覆盖。
     info:
       path: BabyTimeline/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: zh_CN
+        CFBundleDisplayName: 宝贝时光
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: AccentColor
+          UIImageRespectsSafeAreaInsets: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSPhotoLibraryUsageDescription: >-
+          需要访问你的相册，用来自动整理宝宝的成长照片，生成一条时间线。照片不会离开你的手机。
+        NSPhotoLibraryAddUsageDescription: >-
+          用来把宝宝的照片保留在相册里，App 不会修改任何已有照片。
+        NSLocationWhenInUseUsageDescription: >-
+          用来把照片里的 GPS 信息转换成可读的地点名称，便于回忆。
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.babytimeline
