@@ -76,14 +76,12 @@ struct MilestoneListView: View {
                     Section {
                         ForEach(suggestions) { suggestion in
                             Button {
+                                // 照片匹配在 MilestoneEditView.loadInitial 里统一做，
+                                // 避免这里预算 + EditView 再算一次产生两个不同结果
                                 preFilledDraft = MilestoneDraft(
                                     title: suggestion.entry.title,
                                     date: suggestion.suggestedDate,
-                                    note: suggestion.entry.detail,
-                                    linkedAssetLocalId: MilestonePhotoMatcher.bestMatchAssetId(
-                                        for: suggestion.suggestedDate,
-                                        in: photos
-                                    )
+                                    note: suggestion.entry.detail
                                 )
                             } label: {
                                 SuggestionRow(baby: baby, suggestion: suggestion)
@@ -116,8 +114,6 @@ struct MilestoneDraft: Identifiable {
     let title: String
     let date: Date
     let note: String
-    /// 预先从时间线里自动配好的照片；可以为 nil（找不到合适的）
-    let linkedAssetLocalId: String?
 }
 
 // MARK: - 建议行

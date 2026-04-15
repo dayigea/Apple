@@ -39,6 +39,19 @@ struct MilestoneEditView: View {
 
     private var isEditing: Bool { milestone != nil }
 
+    /// 当前自动匹配照片的拍摄日期与里程碑日期的差距文字，仅在「自动匹配」状态下展示。
+    private var autoMatchLabel: String? {
+        guard !photoWasUserEdited, let id = linkedAssetLocalId else { return nil }
+        guard let entry = photos.first(where: { $0.assetLocalId == id }) else { return nil }
+        let days = MilestonePhotoMatcher.dayDiff(matchedPhoto: entry, targetDate: date)
+        if days == 0 {
+            return "与里程碑同一天拍摄"
+        } else {
+            let ahead = entry.creationDate < date
+            return "拍摄于里程碑日期\(ahead ? "前" : "后") \(days) 天"
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -68,15 +81,13 @@ struct MilestoneEditView: View {
                                 .frame(width: 60, height: 60)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(photoWasUserEdited
-                                     ? "已绑定一张照片"
-                                     : "已自动匹配附近的一张照片")
-                                    .font(.footnote)
-                                Text(photoWasUserEdited
-                                     ? "手动选择"
-                                     : "可以点下面更换或取消")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                Text(photoWasUserEdited ? "已手动绑定" : "已自动匹配")
+                                    .font(.footnote).fontWeight(.medium)
+                                if !photoWasUserEdited, let label = autoMatchLabel {
+                                    Text(label)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                             Spacer(minLength: 0)
                         }
@@ -109,7 +120,7 @@ struct MilestoneEditView: View {
                                 photoWasUserEdited = false
                                 autoLinkPhotoFromTimeline()
                             } label: {
-                                Label("自动匹配最接近日期的一张", systemImage: "wand.and.stars")
+                                Label("重新自动匹配", systemImage: "wand.and.stars")
                             }
                         }
                     }
@@ -117,9 +128,9 @@ struct MilestoneEditView: View {
                     Text("绑定照片（可选）")
                 } footer: {
                     if !isEditing && !photoWasUserEdited {
-                        Text("默认会从时间线里挑一张拍摄日期最接近里程碑日期的照片。改日期时会自动跟着换，除非你自己手动改过。")
+                        Text("从时间线里挑一张拍摄日期最接近里程碑日期的照片。改日期时自动重新匹配，直到你手动更换为止。如果匹配结果不对，点「更换照片」手动选。")
                     } else {
-                        Text("绑定的照片会显示在时间线和里程碑列表里。")
+                        Text("绑定的照片会显示在里程碑列表里。")
                     }
                 }
             }
@@ -151,7 +162,7 @@ struct MilestoneEditView: View {
 
     private func loadInitial() {
         if let milestone {
-            // 编辑已有：原样载入，把自动匹配开关交给用户
+            // 编辑已有：原样载入，不做自动匹配
             title = milestone.title
             date = milestone.date
             note = milestone.note ?? ""
@@ -159,20 +170,19 @@ struct MilestoneEditView: View {
             photoWasUserEdited = true
             return
         }
+        // 新建（空白或来自建议）：先设好日期，再统一做自动匹配
         if let draft {
             title = draft.title
-            // 如果建议日期是未来（万一系统时钟不对），压到今天
+            // 建议日期如果是未来（系统时钟异常），压到今天
             date = min(draft.date, .now)
-            // 如果建议日期早于生日（不应该发生），压到生日
+            // 建议日期如果早于生日（不应该发生），压到生日
             date = max(date, baby.birthday)
             note = draft.note
-            // 建议里可能已经预先配好了一张
-            linkedAssetLocalId = draft.linkedAssetLocalId
         }
-        // 空白新建或 draft 没配到 → 根据当前日期立即自动配一张
-        if linkedAssetLocalId == nil {
-            autoLinkPhotoFromTimeline()
-        }
+        // 无论是否有 draft，都根据最终日期重新匹配一次。
+        // ★ 不再依赖 list view 预算的 linkedAssetLocalId，因为那时 photos 可能
+        //   还没加载，或者使用的是 maxDays 限制的旧逻辑，导致结果不准。
+        autoLinkPhotoFromTimeline()
     }
 
     private func autoLinkPhotoFromTimeline() {
