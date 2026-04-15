@@ -9,9 +9,11 @@ import SwiftUI
 /// - `milestone == nil, draft != nil` → 从"建议"点进来，预填标题/日期/说明
 ///
 /// 照片自动绑定：新建里程碑时（空白或草稿），会用 `MilestonePhotoMatcher`
-/// 从时间线里自动挑一张离当前日期最近的照片贴上去。用户改日期时，只要
-/// 还没主动选过照片，自动匹配会跟着重跑。只要用户手动点了「更换」或
-/// 「取消绑定」，`photoWasUserEdited = true`，自动逻辑就不再干预。
+/// 从时间线里自动挑一张照片贴上去。策略是**先按内容关键词匹配**（通过
+/// `MilestoneCatalog.entry(forTitle:)?.photoKeywords` 查 `PhotoEntry.autoTags`），
+/// 没有命中才退化到纯日期最近。用户改日期时只要还没主动选过照片，自动匹配
+/// 会跟着重跑。只要用户手动点了「更换」或「取消绑定」，`photoWasUserEdited = true`，
+/// 自动逻辑就不再干预。
 struct MilestoneEditView: View {
 
     let baby: Baby
@@ -39,17 +41,30 @@ struct MilestoneEditView: View {
 
     private var isEditing: Bool { milestone != nil }
 
+    /// 当前标题对应的内容关键词（从 `MilestoneCatalog` 里查，手写标题拿不到就是空）
+    private var catalogKeywords: [String] {
+        MilestoneCatalog.entry(forTitle: title.trimmingCharacters(in: .whitespaces))?.photoKeywords ?? []
+    }
+
     /// 当前自动匹配照片的拍摄日期与里程碑日期的差距文字，仅在「自动匹配」状态下展示。
     private var autoMatchLabel: String? {
         guard !photoWasUserEdited, let id = linkedAssetLocalId else { return nil }
         guard let entry = photos.first(where: { $0.assetLocalId == id }) else { return nil }
         let days = MilestonePhotoMatcher.dayDiff(matchedPhoto: entry, targetDate: date)
+        let contentHit = MilestonePhotoMatcher.hasKeywordMatch(entry, keywords: catalogKeywords)
+        let datePart: String
         if days == 0 {
-            return "与里程碑同一天拍摄"
+            datePart = "与里程碑同一天拍摄"
         } else {
             let ahead = entry.creationDate < date
-            return "拍摄于里程碑日期\(ahead ? "前" : "后") \(days) 天"
+            datePart = "拍摄于里程碑日期\(ahead ? "前" : "后") \(days) 天"
         }
+        if contentHit {
+            let hits = Set(catalogKeywords).intersection(entry.autoTags)
+            let tagText = hits.sorted().joined(separator: "、")
+            return "内容匹配「\(tagText)」· \(datePart)"
+        }
+        return datePart
     }
 
     var body: some View {
@@ -128,7 +143,11 @@ struct MilestoneEditView: View {
                     Text("绑定照片（可选）")
                 } footer: {
                     if !isEditing && !photoWasUserEdited {
-                        Text("从时间线里挑一张拍摄日期最接近里程碑日期的照片。改日期时自动重新匹配，直到你手动更换为止。如果匹配结果不对，点「更换照片」手动选。")
+                        if !catalogKeywords.isEmpty {
+                            Text("先从时间线里找自动标签含「\(catalogKeywords.joined(separator: "、"))」的照片，再按日期最近挑一张；没有内容匹配就退化到纯按日期。改日期会重新匹配，手动更换后就不再自动改。")
+                        } else {
+                            Text("从时间线里挑一张拍摄日期最接近里程碑日期的照片。改日期时自动重新匹配，直到你手动更换为止。如果匹配结果不对，点「更换照片」手动选。")
+                        }
                     } else {
                         Text("绑定的照片会显示在里程碑列表里。")
                     }
@@ -186,7 +205,11 @@ struct MilestoneEditView: View {
     }
 
     private func autoLinkPhotoFromTimeline() {
-        linkedAssetLocalId = MilestonePhotoMatcher.bestMatchAssetId(for: date, in: photos)
+        linkedAssetLocalId = MilestonePhotoMatcher.bestMatchAssetId(
+            for: date,
+            in: photos,
+            preferringKeywords: catalogKeywords
+        )
     }
 
     private func save() {

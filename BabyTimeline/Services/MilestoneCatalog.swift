@@ -21,31 +21,44 @@ enum MilestoneCatalog {
         let detail: String
         /// 用于图标的 SF Symbol 名称
         let icon: String
+        /// 照片自动匹配的内容关键词（中文，来自 `TagTranslator` 的翻译结果）。
+        ///
+        /// `MilestonePhotoMatcher` 会优先从 `PhotoEntry.autoTags` 里包含这些关键词的照片中
+        /// 挑选日期最近的一张；只有完全没有匹配上的时候，才退化到按日期距离匹配。
+        ///
+        /// 空数组表示没有明显可识别的视觉特征（例如「第一次翻身」），此时直接按日期匹配。
+        let photoKeywords: [String]
     }
 
     /// 全量目录。新增条目时直接往下加就行；删/改只要注意 `title` 作为 ID 别乱动。
     static let all: [Entry] = [
-        Entry(expectedMonths: 1,  title: "第一次抬头",        detail: "大约 1 个月时，趴着能短暂抬头看看世界。",               icon: "figure.child"),
-        Entry(expectedMonths: 2,  title: "第一次微笑",        detail: "约 6–8 周开始有回应性的社交微笑，不再只是反射。",     icon: "face.smiling"),
-        Entry(expectedMonths: 3,  title: "第一次咯咯笑",      detail: "约 3 个月出声笑，对声音、表情有反馈。",                 icon: "speaker.wave.2"),
-        Entry(expectedMonths: 4,  title: "第一次翻身",        detail: "约 4 个月从俯卧翻到仰卧或反过来。",                     icon: "arrow.2.circlepath"),
-        Entry(expectedMonths: 5,  title: "第一次认生",        detail: "约 5 个月开始分辨熟人与陌生人。",                       icon: "eye"),
-        Entry(expectedMonths: 6,  title: "第一次独坐",        detail: "约 6 个月可以独自坐稳一小会儿。",                       icon: "figure.seated.side"),
-        Entry(expectedMonths: 6,  title: "第一次吃辅食",      detail: "约 6 个月开始添加辅食，第一口米糊/菜泥。",              icon: "fork.knife"),
-        Entry(expectedMonths: 7,  title: "长第一颗牙",        detail: "多数宝宝 6–8 个月长出第一颗门牙。",                     icon: "mouth"),
-        Entry(expectedMonths: 8,  title: "第一次爬行",        detail: "约 7–10 个月学会爬，形态因娃而异。",                    icon: "figure.run"),
-        Entry(expectedMonths: 9,  title: "第一次叫爸爸妈妈",  detail: "约 9 个月开始发出「爸爸」「妈妈」的音节。",            icon: "text.bubble"),
-        Entry(expectedMonths: 10, title: "第一次扶站",        detail: "约 10 个月扶着家具站起来。",                            icon: "figure.stand"),
-        Entry(expectedMonths: 12, title: "第一次独立走路",    detail: "约 1 岁左右迈出人生第一步。",                           icon: "figure.walk"),
-        Entry(expectedMonths: 12, title: "第一个生日",        detail: "宝宝的 1 岁生日！一般会拍很多合影和蛋糕。",             icon: "birthday.cake"),
-        Entry(expectedMonths: 14, title: "第一次认识颜色",    detail: "约 14 个月开始对颜色、形状表现出辨识。",                icon: "paintpalette"),
-        Entry(expectedMonths: 15, title: "第一次自己吃饭",    detail: "约 1 岁 3 个月尝试自己用勺子吃饭。",                    icon: "fork.knife.circle"),
-        Entry(expectedMonths: 18, title: "第一次跑",          detail: "约 1 岁半开始摇摇晃晃地跑。",                           icon: "figure.run.circle"),
-        Entry(expectedMonths: 18, title: "第一次说短句",      detail: "约 1 岁半开始把两个词拼在一起，例如「要奶」「妈妈抱」。", icon: "text.quote"),
-        Entry(expectedMonths: 24, title: "第二个生日",        detail: "宝宝的 2 岁生日。",                                     icon: "birthday.cake"),
-        Entry(expectedMonths: 24, title: "第一次双脚跳",      detail: "约 2 岁可以双脚同时离地跳一下。",                       icon: "figure.jumprope"),
-        Entry(expectedMonths: 30, title: "第一次会说自己名字",detail: "约 2 岁半可以说出自己的名字。",                         icon: "person.text.rectangle"),
-        Entry(expectedMonths: 36, title: "第三个生日",        detail: "宝宝的 3 岁生日。",                                     icon: "birthday.cake"),
-        Entry(expectedMonths: 36, title: "第一次骑三轮车",    detail: "约 3 岁可以控制简单的三轮车。",                         icon: "bicycle"),
+        Entry(expectedMonths: 1,  title: "第一次抬头",        detail: "大约 1 个月时，趴着能短暂抬头看看世界。",               icon: "figure.child",              photoKeywords: []),
+        Entry(expectedMonths: 2,  title: "第一次微笑",        detail: "约 6–8 周开始有回应性的社交微笑，不再只是反射。",     icon: "face.smiling",              photoKeywords: ["微笑"]),
+        Entry(expectedMonths: 3,  title: "第一次咯咯笑",      detail: "约 3 个月出声笑，对声音、表情有反馈。",                 icon: "speaker.wave.2",            photoKeywords: ["微笑"]),
+        Entry(expectedMonths: 4,  title: "第一次翻身",        detail: "约 4 个月从俯卧翻到仰卧或反过来。",                     icon: "arrow.2.circlepath",        photoKeywords: []),
+        Entry(expectedMonths: 5,  title: "第一次认生",        detail: "约 5 个月开始分辨熟人与陌生人。",                       icon: "eye",                       photoKeywords: []),
+        Entry(expectedMonths: 6,  title: "第一次独坐",        detail: "约 6 个月可以独自坐稳一小会儿。",                       icon: "figure.seated.side",        photoKeywords: []),
+        Entry(expectedMonths: 6,  title: "第一次吃辅食",      detail: "约 6 个月开始添加辅食，第一口米糊/菜泥。",              icon: "fork.knife",                photoKeywords: ["吃饭", "食物", "餐椅", "餐食"]),
+        Entry(expectedMonths: 7,  title: "长第一颗牙",        detail: "多数宝宝 6–8 个月长出第一颗门牙。",                     icon: "mouth",                     photoKeywords: []),
+        Entry(expectedMonths: 8,  title: "第一次爬行",        detail: "约 7–10 个月学会爬，形态因娃而异。",                    icon: "figure.run",                photoKeywords: []),
+        Entry(expectedMonths: 9,  title: "第一次叫爸爸妈妈",  detail: "约 9 个月开始发出「爸爸」「妈妈」的音节。",            icon: "text.bubble",               photoKeywords: []),
+        Entry(expectedMonths: 10, title: "第一次扶站",        detail: "约 10 个月扶着家具站起来。",                            icon: "figure.stand",              photoKeywords: []),
+        Entry(expectedMonths: 12, title: "第一次独立走路",    detail: "约 1 岁左右迈出人生第一步。",                           icon: "figure.walk",               photoKeywords: ["走路"]),
+        Entry(expectedMonths: 12, title: "第一个生日",        detail: "宝宝的 1 岁生日！一般会拍很多合影和蛋糕。",             icon: "birthday.cake",             photoKeywords: ["生日", "生日蛋糕", "蛋糕", "派对"]),
+        Entry(expectedMonths: 14, title: "第一次认识颜色",    detail: "约 14 个月开始对颜色、形状表现出辨识。",                icon: "paintpalette",              photoKeywords: []),
+        Entry(expectedMonths: 15, title: "第一次自己吃饭",    detail: "约 1 岁 3 个月尝试自己用勺子吃饭。",                    icon: "fork.knife.circle",         photoKeywords: ["吃饭", "食物", "餐椅", "餐食"]),
+        Entry(expectedMonths: 18, title: "第一次跑",          detail: "约 1 岁半开始摇摇晃晃地跑。",                           icon: "figure.run.circle",         photoKeywords: ["走路"]),
+        Entry(expectedMonths: 18, title: "第一次说短句",      detail: "约 1 岁半开始把两个词拼在一起，例如「要奶」「妈妈抱」。", icon: "text.quote",                photoKeywords: []),
+        Entry(expectedMonths: 24, title: "第二个生日",        detail: "宝宝的 2 岁生日。",                                     icon: "birthday.cake",             photoKeywords: ["生日", "生日蛋糕", "蛋糕", "派对"]),
+        Entry(expectedMonths: 24, title: "第一次双脚跳",      detail: "约 2 岁可以双脚同时离地跳一下。",                       icon: "figure.jumprope",           photoKeywords: []),
+        Entry(expectedMonths: 30, title: "第一次会说自己名字",detail: "约 2 岁半可以说出自己的名字。",                         icon: "person.text.rectangle",     photoKeywords: []),
+        Entry(expectedMonths: 36, title: "第三个生日",        detail: "宝宝的 3 岁生日。",                                     icon: "birthday.cake",             photoKeywords: ["生日", "生日蛋糕", "蛋糕", "派对"]),
+        Entry(expectedMonths: 36, title: "第一次骑三轮车",    detail: "约 3 岁可以控制简单的三轮车。",                         icon: "bicycle",                   photoKeywords: ["自行车"]),
     ]
+
+    /// 按 title 查找一条建议条目。`PhotoImporter` 自动创建的生日 Milestone
+    /// 以及用户从"建议"里一键填写的 Milestone，都能通过 title 定位回 catalog。
+    static func entry(forTitle title: String) -> Entry? {
+        all.first { $0.title == title }
+    }
 }
