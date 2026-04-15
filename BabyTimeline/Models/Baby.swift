@@ -17,7 +17,14 @@ final class Baby {
     /// 存的是一份 JSON 编码的 base64 字符串数组，每一项对应一个
     /// 归档后的 `VNFeaturePrintObservation` 的 Data → base64。
     /// 不直接用 `[Data]` 因为 iOS 18 SwiftData 对 Array<…> 支持有坑。
-    var negativeFacePrintsRawJSON: Data
+    ///
+    /// **必须是 Optional**。这个字段是在已经有老 Baby 记录的情况下后加的，
+    /// SwiftData 在迁移老的 store 时会尝试做 Core Data lightweight migration：
+    /// 非可选（mandatory）的新字段没法给老记录补默认值，迁移会直接挂掉
+    /// （NSCocoaErrorDomain 134110 / "Validation error missing attribute values
+    /// on mandatory destination attribute"）。做成 Optional 后老记录就可以
+    /// 留成 `nil`，getter 里把 `nil` 视作「还没有任何排除人脸」即可。
+    var negativeFacePrintsRawJSON: Data?
     /// 认人匹配阈值。`VNFeaturePrintObservation.computeDistance` 返回值越小越像，
     /// 阈值越小越严格。典型范围 10 – 30，默认 18 适中。
     var faceMatchThreshold: Double
@@ -38,8 +45,9 @@ final class Baby {
         self.gender = gender
         self.avatarData = avatarData
         self.referenceFacePrintData = referenceFacePrintData
-        let encoded = Self.encodeNegativePrints(negativeFacePrints)
-        self.negativeFacePrintsRawJSON = encoded
+        self.negativeFacePrintsRawJSON = negativeFacePrints.isEmpty
+            ? nil
+            : Self.encodeNegativePrints(negativeFacePrints)
         self.faceMatchThreshold = faceMatchThreshold
         self.createdAt = createdAt
     }
@@ -47,8 +55,10 @@ final class Baby {
     // MARK: - 排除人脸的读写
 
     /// 当前所有「排除人脸」的归档 Data 列表。只读；修改用 `addNegativeFacePrint` 等。
+    /// `nil` 存储会被当作空列表处理。
     var negativeFacePrints: [Data] {
-        Self.decodeNegativePrints(negativeFacePrintsRawJSON)
+        guard let raw = negativeFacePrintsRawJSON else { return [] }
+        return Self.decodeNegativePrints(raw)
     }
 
     /// 追加一个「排除人脸」。幂等：相同 Data 不会重复添加。
@@ -66,12 +76,14 @@ final class Baby {
         var current = negativeFacePrints
         guard current.indices.contains(index) else { return }
         current.remove(at: index)
-        negativeFacePrintsRawJSON = Self.encodeNegativePrints(current)
+        negativeFacePrintsRawJSON = current.isEmpty
+            ? nil
+            : Self.encodeNegativePrints(current)
     }
 
     /// 清空所有排除人脸。
     func clearNegativeFacePrints() {
-        negativeFacePrintsRawJSON = Data("[]".utf8)
+        negativeFacePrintsRawJSON = nil
     }
 
     private static func encodeNegativePrints(_ prints: [Data]) -> Data {
