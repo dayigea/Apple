@@ -13,6 +13,7 @@
 - **成长里程碑**：
   - 手动记录「第一次走路 / 第一次喊妈妈」等关键时刻，可绑一张对应照片
   - **按月龄自动建议**：内置一份 WHO/CDC 发育参考目录（抬头/翻身/独坐/爬行/独立走路……），宝宝到了对应月龄就会在里程碑 Tab 底部列出「建议记录」，点一下自动预填标题、日期、说明
+  - **自动关联照片**：新建或选中建议里程碑时，`MilestonePhotoMatcher` 会从时间线里自动找一张拍摄日期最接近里程碑日期的照片（30 天内）预填进去；改日期时自动重新匹配，直到你主动选了别的照片为止
   - **生日自动识别**：扫描相册时如果某张照片正好落在女儿生日周年 ±3 天内，自动帮你创建「第一个生日 / 第二个生日 / …」里程碑并绑定这张照片
 - **完全本地、完全私人**：所有数据都在 App 沙盒里，照片本体始终留在系统相册，**不上传任何服务器**
 
@@ -55,7 +56,8 @@ Apple/
     │   ├── GeocodingService.swift
     │   ├── PhotoImporter.swift             # 扫相册 + 生日自动建里程碑
     │   ├── MilestoneCatalog.swift          # 发育阶段参考目录
-    │   └── MilestoneSuggester.swift        # 按月龄从目录里挑「建议」
+    │   ├── MilestoneSuggester.swift        # 按月龄从目录里挑「建议」
+    │   └── MilestonePhotoMatcher.swift     # 按日期从时间线里自动配最近的照片
     └── Views/
         ├── SetupView.swift
         ├── MainTabView.swift
@@ -167,7 +169,7 @@ open BabyTimeline.xcodeproj
 | Tab | 作用 |
 | --- | --- |
 | **时间线** | 按「新生儿 / 1–3 月 / 3–6 月 / 6–12 月 / 1–1.5 岁 / 1.5–2 岁 / 2–3 岁…」分组展示照片。点缩略图进详情页，可看大图、年龄、地点、自动标签，可写备注、加星收藏 |
-| **里程碑** | 上半是「已记录」——父母手动填过的；下半是「建议记录」——按宝宝实际月龄从内置发育目录里挑出的可以开始记的事件，点一下直接预填标题/日期/说明。扫描相册时遇到生日周年附近的照片会自动建「第 N 个生日」里程碑 |
+| **里程碑** | 上半是「已记录」——父母手动填过的；下半是「建议记录」——按宝宝实际月龄从内置发育目录里挑出的事件，点一下直接预填标题/日期/说明，并**自动从时间线里配一张最近的照片**。新建里程碑改日期时照片绑定也会自动跟着换，直到你主动手选为止 |
 | **设置** | 修改宝宝资料、**设置认人照片 + 阈值**、**管理排除人脸**、重新扫描相册、清空记录 |
 
 ## 认人是怎么工作的
@@ -385,7 +387,9 @@ open BabyTimeline.xcodeproj
 python3 scripts/make-app-icon.py
 ```
 
-会重新生成 `BabyTimeline/Assets.xcassets/AppIcon.appiconset/AppIcon.png`。想改样式直接编辑那个脚本里的颜色、形状参数，或者你也可以**直接把自己设计好的 1024×1024 PNG 命名成 `AppIcon.png` 放进 `BabyTimeline/Assets.xcassets/AppIcon.appiconset/` 替换掉**，然后 `xcodegen generate` + Xcode 重新 build 就生效了。
+当前图标：暖奶油色背景 + 红色真实苹果形状（双瓣果身 + 顶部凹陷 + 棕色果柄 + 嫩绿叶子 + 左上高光/右下暗面）。纯 PIL 几何绘制，不依赖任何位图素材。
+
+会重新生成 `BabyTimeline/Assets.xcassets/AppIcon.appiconset/AppIcon.png`。想改颜色或大小直接编辑脚本顶部的颜色常量和 `apple_radius`；或者**直接把自己设计好的 1024×1024 PNG 命名成 `AppIcon.png` 放进同目录替换**，然后 `xcodegen generate` + Xcode 重新 build 就生效了。
 
 唯一要求：
 - 必须是 **1024×1024** 像素

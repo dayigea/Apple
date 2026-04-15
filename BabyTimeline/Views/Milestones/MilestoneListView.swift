@@ -13,6 +13,10 @@ struct MilestoneListView: View {
     @Query(sort: \Milestone.date, order: .forward)
     private var milestones: [Milestone]
 
+    /// 时间线里的所有照片，供「建议 → 自动匹配一张最近的照片」用
+    @Query(sort: \PhotoEntry.creationDate, order: .forward)
+    private var photos: [PhotoEntry]
+
     @State private var editing: Milestone?
     @State private var showingNew = false
     /// 点击某条"建议"后跳进的预填表单
@@ -75,7 +79,11 @@ struct MilestoneListView: View {
                                 preFilledDraft = MilestoneDraft(
                                     title: suggestion.entry.title,
                                     date: suggestion.suggestedDate,
-                                    note: suggestion.entry.detail
+                                    note: suggestion.entry.detail,
+                                    linkedAssetLocalId: MilestonePhotoMatcher.bestMatchAssetId(
+                                        for: suggestion.suggestedDate,
+                                        in: photos
+                                    )
                                 )
                             } label: {
                                 SuggestionRow(baby: baby, suggestion: suggestion)
@@ -85,7 +93,7 @@ struct MilestoneListView: View {
                     } header: {
                         Text("建议记录（按月龄推算）")
                     } footer: {
-                        Text("根据发育阶段给的提醒，不是固定时间。点一下可以快速添加，App 会预填标题、日期和说明。")
+                        Text("根据发育阶段给的提醒，不是固定时间。点一下可以快速添加，App 会预填标题、日期、说明，并从时间线里自动配一张最接近那个日期的照片。")
                     }
                 }
             }
@@ -108,6 +116,8 @@ struct MilestoneDraft: Identifiable {
     let title: String
     let date: Date
     let note: String
+    /// 预先从时间线里自动配好的照片；可以为 nil（找不到合适的）
+    let linkedAssetLocalId: String?
 }
 
 // MARK: - 建议行
