@@ -284,6 +284,9 @@ open BabyTimeline.xcodeproj
 **Q: 为什么不把 `.xcodeproj` 提交到 Git？**
 `.xcodeproj/project.pbxproj` 是一个不断变化的大文件，Git diff 基本没法读。`project.yml` 才几十行、人能看懂，改动一目了然。用 `./bootstrap.sh` 或 `xcodegen generate` 随时重新生成即可。
 
+**Q: 拉了新代码后 Xcode 报 `Cannot find 'XXX' in scope`？**
+99% 是因为新代码加了新的 `.swift` 文件，但你本地的 `BabyTimeline.xcodeproj` 还是旧的。**必须在项目根目录跑一次 `xcodegen generate`** 让 XcodeGen 把新文件加进 target sources，然后 Xcode 里 `⇧⌘K`（Clean Build Folder）再 `⌘R` 重新 build 就好了。这是 XcodeGen 流程的固定动作 —— 每次 `git pull` 之后、每次你自己增删 Swift 文件之后，都要跑一次。
+
 ---
 
 ## 给家人用（TestFlight 分发）
