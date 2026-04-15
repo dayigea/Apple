@@ -62,11 +62,25 @@ enum FaceRecognitionService {
     // MARK: - 候选照片匹配
 
     /// 判断一张照片里是否含有与参考指纹匹配的人脸。
+    ///
+    /// 匹配策略是「对比式」的：
+    ///   1. `positive_dist <= threshold`（与女儿的指纹距离在阈值内）
+    ///   2. **并且** `positive_dist < min(negative_dist) - margin`
+    ///      （这张脸比任何一张「排除人脸」都更像女儿）
+    ///
+    /// 所以如果你把自己的照片加进「排除人脸」，以后你自己被错当成女儿的情况
+    /// 就会被过滤掉：那张脸对你的距离会比对女儿的距离更小，条件 2 失败 → 不命中。
+    ///
+    /// - Parameter negativeReferences: 排除人脸的指纹列表，可以为空。
+    /// - Parameter contrastMargin: 安全余量。正数越大越严格。0 就是
+    ///   「只要更像女儿一点点就算女儿」。默认 0 已经能解决大部分误判。
     /// - Returns: (是否命中, 照片里总人脸数)
     static func matchResult(
         in cgImage: CGImage,
         reference: VNFeaturePrintObservation,
-        threshold: Float
+        negativeReferences: [VNFeaturePrintObservation] = [],
+        threshold: Float,
+        contrastMargin: Float = 0
     ) async -> (matched: Bool, faceCount: Int) {
         let faces = await detectFaces(in: cgImage)
         if faces.isEmpty { return (false, 0) }
@@ -78,17 +92,45 @@ enum FaceRecognitionService {
             ) else {
                 continue
             }
-            var distance: Float = 0
+            // 1. 与女儿的距离
+            var positiveDist: Float = 0
             do {
-                try candidate.computeDistance(&distance, to: reference)
-                if distance <= threshold {
-                    return (true, faces.count)
-                }
+                try candidate.computeDistance(&positiveDist, to: reference)
             } catch {
                 continue
             }
+            if positiveDist > threshold { continue }
+
+            // 2. 与所有排除人脸的最小距离
+            var negativeMinDist: Float = .greatestFiniteMagnitude
+            for neg in negativeReferences {
+                var d: Float = 0
+                do {
+                    try candidate.computeDistance(&d, to: neg)
+                    if d < negativeMinDist { negativeMinDist = d }
+                } catch {
+                    continue
+                }
+            }
+
+            // 没有排除样本：退化成原来的"只要进阈值就算"
+            if negativeReferences.isEmpty {
+                return (true, faces.count)
+            }
+
+            // 有排除样本：必须比任何一个排除脸都明显更像女儿
+            if positiveDist + contrastMargin < negativeMinDist {
+                return (true, faces.count)
+            }
+            // 否则认为这张脸更像排除人脸（或相差不大），不算命中
         }
         return (false, faces.count)
+    }
+
+    /// 把一张任意包含人脸的图片变成可归档的排除人脸指纹。
+    /// 跟 `generateReferencePrint` 逻辑完全一样，改名字是为了语义更清楚。
+    static func generateNegativePrint(from cgImage: CGImage) async -> Data? {
+        await generateReferencePrint(from: cgImage)
     }
 
     // MARK: - 归档 / 反归档

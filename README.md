@@ -6,10 +6,14 @@
 
 - **读取手机相册里生日之后的照片**，按年龄阶段自动分组，生成一条成长时间线
 - **认人**（可选，推荐开启）：用 Vision 为女儿的一张参考照生成人脸指纹，之后扫描相册时**只保留含她本人的照片**
+- **排除人脸**：把爸爸/妈妈/其他家人的正脸照加入黑名单，扫描时用对比匹配过滤掉「更像别人而不是女儿」的照片，显著降低误判
 - **只纳入含人脸的照片**（即便没开认人，风景、截图、空镜也会被自动过滤）
 - **自动识别画面内容**（`VNClassifyImageRequest`），生成中文标签：宝宝、食物、户外、生日蛋糕…… 不需要手动打字
 - **自动读取拍摄时间 + GPS**，用 `CLGeocoder` 把坐标反查成「北京市朝阳区」这样的中文地名
-- **成长里程碑**：手动记录「第一次走路 / 第一次喊妈妈」等关键时刻，可绑一张对应照片
+- **成长里程碑**：
+  - 手动记录「第一次走路 / 第一次喊妈妈」等关键时刻，可绑一张对应照片
+  - **按月龄自动建议**：内置一份 WHO/CDC 发育参考目录（抬头/翻身/独坐/爬行/独立走路……），宝宝到了对应月龄就会在里程碑 Tab 底部列出「建议记录」，点一下自动预填标题、日期、说明
+  - **生日自动识别**：扫描相册时如果某张照片正好落在女儿生日周年 ±3 天内，自动帮你创建「第一个生日 / 第二个生日 / …」里程碑并绑定这张照片
 - **完全本地、完全私人**：所有数据都在 App 沙盒里，照片本体始终留在系统相册，**不上传任何服务器**
 
 ## 技术栈
@@ -45,11 +49,13 @@ Apple/
     ├── Services/
     │   ├── AgeCalculator.swift
     │   ├── ImageAnalysisService.swift      # 场景分类 → 中文标签
-    │   ├── FaceRecognitionService.swift    # 人脸检测 + 认人指纹
+    │   ├── FaceRecognitionService.swift    # 人脸检测 + 认人指纹 + 对比匹配
     │   ├── PhotoLibraryService.swift
     │   ├── MetadataExtractor.swift
     │   ├── GeocodingService.swift
-    │   └── PhotoImporter.swift
+    │   ├── PhotoImporter.swift             # 扫相册 + 生日自动建里程碑
+    │   ├── MilestoneCatalog.swift          # 发育阶段参考目录
+    │   └── MilestoneSuggester.swift        # 按月龄从目录里挑「建议」
     └── Views/
         ├── SetupView.swift
         ├── MainTabView.swift
@@ -150,15 +156,19 @@ open BabyTimeline.xcodeproj
    - 选一张女儿本人、清晰正脸的照片作为「认人基准」
    - 点 **重新扫描相册** → 这次只会保留含女儿本人的照片
    - 如果发现漏掉了不少 → 滑块调「宽松」一点
-   - 如果发现混进了别人（爸爸/妈妈/爷爷奶奶）→ 滑块调「严格」一点
+   - 如果发现混进了别人（爸爸/妈妈/爷爷奶奶）→ 两种办法任选其一：
+     1. 滑块调「严格」一点（比如从 18 降到 14–16）
+     2. 或者去下面的 **排除人脸** 区，选一张那个家人的正脸照 → **重新扫描相册**。
+        对比匹配算法会把「更像爸爸/妈妈而不是像女儿」的照片直接过滤掉，
+        比单纯调阈值精准得多。可以加多张（爸爸、外公、外婆……）
 
 ## 三个 Tab
 
 | Tab | 作用 |
 | --- | --- |
 | **时间线** | 按「新生儿 / 1–3 月 / 3–6 月 / 6–12 月 / 1–1.5 岁 / 1.5–2 岁 / 2–3 岁…」分组展示照片。点缩略图进详情页，可看大图、年龄、地点、自动标签，可写备注、加星收藏 |
-| **里程碑** | 手动记录「第一次翻身 / 第一次走路 / 第一次叫妈妈」等关键事件，可绑定时间线里的一张照片 |
-| **设置** | 修改宝宝资料、**设置认人照片 + 阈值**、重新扫描相册、清空记录 |
+| **里程碑** | 上半是「已记录」——父母手动填过的；下半是「建议记录」——按宝宝实际月龄从内置发育目录里挑出的可以开始记的事件，点一下直接预填标题/日期/说明。扫描相册时遇到生日周年附近的照片会自动建「第 N 个生日」里程碑 |
+| **设置** | 修改宝宝资料、**设置认人照片 + 阈值**、**管理排除人脸**、重新扫描相册、清空记录 |
 
 ## 认人是怎么工作的
 
@@ -175,6 +185,56 @@ open BabyTimeline.xcodeproj
 > 注意：`VNGenerateImageFeaturePrintRequest` 并不是专门的人脸识别模型，精度不如 FaceNet/ArcFace。
 > 不过对同一个小朋友在相近时间段的照片，匹配效果通常够用，**而且不需要任何额外模型文件**。
 > 小朋友脸型变化大的话，可以每过半年换一张更新的认人照。
+
+### 排除人脸（对比匹配）是怎么工作的
+
+光靠一个阈值判断「是不是女儿」经常不够用 —— 比如妈妈的脸对「女儿的参考指纹」
+距离是 16，阈值是 18，就会被错当成女儿。解决方法是**加一张妈妈本人的正脸照作为排除样本**。
+
+具体逻辑（`FaceRecognitionService.matchResult`）：
+
+1. 对候选照片里每张脸都算一个特征指纹 `candidate`
+2. 计算 `positiveDist = computeDistance(candidate, 女儿的参考指纹)`
+3. 如果 `positiveDist > threshold` → 直接不命中（太不像女儿）
+4. 对每一张排除人脸算 `negativeDist`，取最小值 `negativeMinDist`
+5. 命中条件：**`positiveDist + margin < negativeMinDist`**
+   —— 也就是「这张脸比任何一张排除人脸都更像女儿」
+
+所以还是拿妈妈错判的例子：
+- `positiveDist`（到女儿）= 16
+- `negativeMinDist`（到妈妈本人）= 10
+- 16 < 10 **不成立** → 不命中 → 不会被当成女儿
+
+这个对比式匹配比单纯调严阈值精准得多：你可以把阈值保持在宽松一些的 18，
+同时把真正会混进来的家人作为排除样本加进去，既不漏女儿，又不误收家人。
+
+加排除人脸的入口在：**设置 → 排除人脸 → 加一张不是女儿的脸**。
+可以加任意多张（爸爸、妈妈、外公、外婆……），加完记得 **重新扫描相册**。
+
+### 里程碑自动建议 / 自动生日是怎么工作的
+
+两套互补的机制，都**不上云、不用 AI 模型**，纯本地规则：
+
+1. **按月龄建议（`MilestoneCatalog` + `MilestoneSuggester`）**
+   - 内置 ~22 条常见发育节点：抬头 / 微笑 / 翻身 / 独坐 / 吃辅食 / 爬行 / 独立走路 / 第一个生日 / 跑 / 说短句…
+   - 数据是静态的、写死在 `MilestoneCatalog.swift` 里，不会联网，也没「AI 医学建议」这种责任问题
+   - `MilestoneSuggester` 每次进里程碑 Tab 时都会按以下规则过滤：
+     - `月龄 >= entry.expectedMonths`（宝宝实际到了这个阶段）
+     - **且** 已记录的里程碑里没有同名条目（按 `title` 精确匹配）
+   - 满足条件的进入「建议记录」区，点一下跳到 `MilestoneEditView`，预填 **标题 / 建议日期（生日 + N 个月）/ 说明**；你只需要改一改日期确认就好
+   - 一旦你保存过同名的里程碑，这条就会自动从建议列表里消失
+
+2. **生日照片自动建里程碑（`PhotoImporter.maybeCreateBirthdayMilestone`）**
+   - 扫描相册时每张照片走完认人后，检查拍摄日期与女儿生日周年日的差：
+     - 差值 ≤ 3 天 → 触发
+     - 算好这是第几个生日（用 `Calendar.dateComponents([.year], ...)`）
+     - 查 SwiftData 里有没有同标题的 `Milestone`（用 `#Predicate`），没有就新建
+     - 把当前这张照片的 `localIdentifier` 绑定过去
+   - 因为 catalog 里的「第一个生日 / 第二个生日 / 第三个生日」**故意**用相同的标题，
+     自动建了之后建议列表里的那条就会被自动去重，不会重复出现
+
+想加更多默认里程碑，直接往 `MilestoneCatalog.all` 数组尾部追加 `Entry(...)` 就行；
+想改模板文案，改同一份数组里的字段就行。**没有任何远程配置，改了之后重装 App 即生效。**
 
 ## 隐私
 
@@ -206,7 +266,17 @@ open BabyTimeline.xcodeproj
 3. 照片的 `creationDate` 早于生日 → 调整日期后重新扫描
 
 **Q: 认人把爸爸妈妈的脸也混进来了？**
-认人阈值太宽松。去设置 → 认人，把滑块往「严格」方向拖（比如调到 14–16），然后重新扫描。
+两种办法，推荐先试第二种：
+1. 去设置 → 认人，把滑块往「严格」方向拖（比如从默认 18 调到 14–16），重新扫描。简单但可能把一些女儿的照片也误杀掉。
+2. **更精准**：设置 → **排除人脸** → 加一张把你（妈妈/爸爸）自己的正脸照，重新扫描。对比式匹配会自动把「更像你而不是像女儿」的照片过滤掉，不需要动阈值。可以加多张（爸爸、外公、外婆……）。
+
+**Q: 为什么某些里程碑没有出现在「建议记录」区？**
+- 宝宝月龄还没到那个 `expectedMonths`（比如 18 个月的建议要等到宝宝满 18 个月才会出现）
+- 或者你已经手动记过同名的里程碑了，系统就不会再重复建议
+- 或者 catalog 里还没收录这条 —— 可以在 `BabyTimeline/Services/MilestoneCatalog.swift` 里自己加
+
+**Q: 生日照自动建的里程碑想删掉怎么办？**
+里程碑 Tab → 左滑那一行 → 删除。跟手动建的里程碑没区别，绑定的照片也会随之解绑（但不会动系统相册里的原图）。
 
 **Q: 把某张具体照片从时间线里移除？**
 目前没做「隐藏单张」。临时方案：设置 → 清空时间线记录 → 重新扫描。或者直接在系统相册里删掉原图。
@@ -216,69 +286,95 @@ open BabyTimeline.xcodeproj
 
 ---
 
-## 给别人用（分发）
+## 给家人用（TestFlight 分发）
 
-iOS App 没有 Android 那种"发个 apk 文件就行"的自由 —— 必须经过 Apple 的签名体系。能不能给别人用 / 怎么给，**完全取决于你愿不愿意花 $99/年开发者账号**。下面把所有路径列清楚：
+> **决定：走 TestFlight。** 既然只想给家人用（老婆、外公外婆、自己爸妈），
+> 花 ¥700/年的 Apple Developer Program 换「TestFlight 链接一点就装、90 天有效、
+> 自动更新、家人完全不用碰 Mac/数据线」是目前唯一值得的路径。下面先给最省事的步骤清单，
+> 再把其他可选方案列在底下作为对照。
 
-### 选项 A：免费 Apple ID（你现在的状态）
-**只能装到「跟你登录同一个 Apple ID 的设备」上。** 给别人用只有两个不太优雅的办法：
-- 让对方在他自己的 Mac 上，用**你的 Apple ID** 登录 Xcode → 拿这份代码 → build 装到他自己的 iPhone。需要他有 Mac、有数据线、要折腾。
-- 或者你拿过他的 iPhone，用你的 Mac + 你的 Apple ID build 一次装上去。证书 **7 天后过期**，过期后他这个 App 打不开 → 你得再拿过来 build 一次。
-- ❌ 不支持远程发个链接就能装。
+### TestFlight 一次性准备（30 分钟）
 
-### 选项 B：$99/年 Apple Developer Program + TestFlight ⭐推荐
-**这是给家人朋友用的最优解，没有之一。** 步骤：
+1. **注册 Apple Developer Program**
+   - 打开 https://developer.apple.com/programs 用你现在的 Apple ID 登录
+   - 个人账号（Individual），一年 99 USD（≈ ¥700）
+   - 信用卡付款后 Apple 会审核身份，**一般几小时到一天**就通过
 
-1. 去 https://developer.apple.com/programs 注册个人账号，付 $99（≈¥700/年）
-2. Xcode 里把项目的 Team 切到这个付费账号
-3. `Product → Archive` → `Distribute App → TestFlight & App Store`
-4. Xcode 自动上传到 App Store Connect
-5. 在 https://appstoreconnect.apple.com 给这个 build 加测试员：
-   - **内部测试**（最多 100 人，他们必须在你的 App Store Connect 团队里）
-   - **外部测试**（最多 10000 人，**只要邮箱**就行，对方不需要 Apple ID 在你团队里）
-6. 把 TestFlight 邀请链接发给老婆/外公外婆/任何想用的人
-7. 对方手机上装一个免费的「TestFlight」App → 点你的链接 → 一键安装「苹果长大了」
+2. **改 Bundle Identifier**（必须全网唯一）
+   - 打开 `project.yml`，找到：
+     ```yaml
+     PRODUCT_BUNDLE_IDENTIFIER: com.personal.babytimeline
+     ```
+   - 改成你自己的反向域名，例如 `com.yingying.babytimeline`
+     （随便起，只要没人注册过 App Store Connect 会告诉你，换一个就行）
+   - 终端里跑 `xcodegen generate` 重新生成 project
 
-好处：
-- 对方完全不用碰 Mac、Xcode、数据线、UDID
-- Build 在 TestFlight 上 **90 天有效**（不是 7 天）
-- 你 push 新版本，对方 TestFlight 里点一下「更新」就好
-- 比上 App Store 简单太多（不用过 App Review 的隐私评估）
+3. **在 App Store Connect 创建一个 App 记录**
+   - 打开 https://appstoreconnect.apple.com → 我的 App → 左上角「+」→ 新建 App
+   - 平台选 iOS、Bundle ID 选刚才改的那个、SKU 随便填（例如 `babytimeline-private`）
+   - 主要语言选「简体中文」
+   - 点创建 → 什么都不用填，直接关掉这一页。**这一步只是预占 Bundle ID，不是真要上架。**
 
-成本：$99/年 + 一次性 30 分钟操作。
+4. **Xcode 里切到付费 Team**
+   - `Xcode → Settings → Accounts`，确认你的 Apple ID 已经加入 Developer Program
+   - 打开 `BabyTimeline.xcodeproj` → 顶部蓝色图标 → `BabyTimeline` target → Signing & Capabilities
+   - **Team** 选你的付费账号（名字后面会有「Apple Development」）
 
-### 选项 C：$99 + Ad Hoc
-跟 B 差不多但更原始：你收集每个用户的 iPhone **UDID**（设备唯一码），在开发者后台手动加进 provisioning profile，build 出 `.ipa`，发给对方让他用 Apple Configurator / Finder 装。**没有任何理由在 2025 年还选 Ad Hoc，TestFlight 完虐它。**
+5. **Archive 并上传**
+   - Xcode 顶部设备选「Any iOS Device (arm64)」（**不要**选模拟器，否则 Archive 菜单是灰的）
+   - 菜单 `Product → Archive` → 等 build 完会弹出 Organizer 窗口
+   - 选中刚 archive 出的那个 build → `Distribute App` → `TestFlight & App Store` → `Upload`
+   - 一路下一步，**Automatic signing** 就行，Xcode 自己处理证书
+   - 上传成功后要在 App Store Connect 后台等 **5–15 分钟的处理时间**（会收邮件）
 
-### 选项 D：上架 App Store
-也是 $99/年同一个账号，但需要：
-- 提交 App Review（首次审核 1–3 天，可能被拒要改）
-- 写 App Store 描述、隐私政策、截图
-- 这个 App 用了相册和位置，App Review 要求**详细解释为什么需要**
+6. **在 App Store Connect 加测试员**
+   - https://appstoreconnect.apple.com → 我的 App → 苹果长大了 → 左边 **TestFlight** Tab
+   - **最快路径 = 内部测试**：右侧「内部群组」点「+」创建群组 → 加测试员 → 填家人邮箱
+     （**前提是这些邮箱已经作为成员加到你的团队里了**，在 https://appstoreconnect.apple.com/access/users 加）
+     - 限制：最多 100 人、要他们的 Apple ID 在你团队里
+     - 好处：**审核免了**，上传完直接能装
+   - **更省事 = 外部测试**：同页「外部群组」新建群组 → 填家人邮箱（无需进团队）
+     - 限制：第一次提交这个 App 时 Apple 会做一次 5–24 小时的 Beta App Review（比正式 App Review 宽松很多），之后的 build 一般不再审
+     - 好处：**只要邮箱**就行，家人用自己的 Apple ID 装就可以，最贴近「发个链接」的体验
+     - 最多 10000 人
 
-如果你只是想给认识的人用，**不要走这条路，纯纯给自己找罪受**。直接 TestFlight 就够。
+7. **家人的使用流程**
+   - 家人收邮件 → 点邀请链接 → 提示装 TestFlight App（免费）→ 装完再点一次链接 → 一键安装「苹果长大了」
+   - 90 天内有效，不用再碰 Mac/Xcode/数据线/证书这些词
 
-### 选项 E：用别人的付费账号
-如果你有朋友/同事已经是 Apple 开发者，可以请他帮你上传 TestFlight，把外部测试员加成你的家人邮箱。零成本，但你得求人。
+### 后续每次更新
 
-### 我的推荐
+代码改完想让家人用到新版本：
 
-| 受众 | 推荐 |
-| --- | --- |
-| 只你自己用 | **不花钱**，按现在的方式 7 天重 build 一次 |
-| 给一两个家人（妈妈、老公） | **$99/年 + TestFlight**，一劳永逸 |
-| 想给十几个家人朋友 | 同上，TestFlight |
-| 真打算让陌生人下载 | 上 App Store，准备好被审核折腾 |
+1. 把 `project.yml` 里 `CFBundleVersion` 加 1（**每次上传必须递增**，`1 → 2 → 3 …`，版本号可以重复但 build 号不能）
+2. `xcodegen generate`
+3. Xcode 里 `Product → Archive → Distribute App → TestFlight`
+4. 等处理完（5–15 分钟），家人的 TestFlight App 里会自动弹出更新提示
 
-**对你这个使用场景（女儿成长记录 + 想分享给家人），结论是：买一年 Apple Developer Program，走 TestFlight。** 一年 ¥700 换全家无痛安装、无痛更新、build 90 天有效，完全值得。
+### TestFlight 要注意的细节
 
-### 如果走 TestFlight，代码这边需要改什么？
+- **App Icon** 必须有 1024×1024 PNG、**无透明通道**。本仓库 `scripts/make-app-icon.py` 生成的已经符合要求
+- **Privacy Manifest**：iOS 17+ 上传时 Apple 会要求声明隐私使用。我们用了相册 / 位置 / Vision：
+  - Info.plist（由 `project.yml` 生成）已经写了 `NSPhotoLibraryUsageDescription` / `NSLocationWhenInUseUsageDescription`
+  - App Store Connect 后台的「App 隐私」表里如实勾选：相册「读取」、位置「反查地名」
+  - 无需第三方 SDK 所以 `PrivacyInfo.xcprivacy` 文件可以不加
+- **不要上架 App Store**。App Store Connect 里那个 App 记录一直保持「准备提交」状态就行，
+  TestFlight 的内部 / 外部测试群组是独立的流程，不需要你点「提交审核上架」
 
-几乎不用改，但有几点要注意：
-1. **Bundle Identifier 必须全网唯一**：现在 `com.personal.babytimeline` 是占位的，改成 `com.你的英文名.appletimeline` 之类的（在 `project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER` 里改）
-2. **CFBundleVersion** 每次上传都要递增（1 → 2 → 3 …）。在 `project.yml` 的 `info.properties.CFBundleVersion` 里改
-3. **App Icon** 必须有 1024×1024 PNG，**没透明通道**。本仓库已经用 `scripts/make-app-icon.py` 自动生成，TestFlight 不会拒
-4. **Privacy Manifest**：iOS 17+ 上传 TestFlight 时 Apple 会要求声明隐私使用。我们用了 Photos / Location / Vision，对应在 App Store Connect 的「数据使用」表里如实勾选即可，App 自身的 Info.plist 已经写了 `NSPhotoLibraryUsageDescription` / `NSLocationWhenInUseUsageDescription`
+---
+
+### 其他（不推荐的）分发方式
+
+下面这些只是让你心里有底，**给家人用的话按上面 TestFlight 走就行，不用往下看**。
+
+- **免费 Apple ID（现状）**：只能装到「跟你同一个 Apple ID 登录」的设备。
+  你得拿过家人的 iPhone 用自己的 Mac build 一次，证书 7 天过期。**7 天后又得拿过来。** 不现实。
+- **Ad Hoc（付费 Developer 但不走 TestFlight）**：收集家人每台 iPhone 的 UDID，
+  手动加进 provisioning profile，build `.ipa`，用 Apple Configurator / Finder 推给对方。
+  **2025 年没理由还选 Ad Hoc，TestFlight 完虐它。**
+- **App Store 上架**：同样 $99/年账号，但需要过 App Review、写隐私政策、写商店描述、做截图。
+  相册 + 位置权限会被 Review 要求详细解释。**只给家人用的话纯纯自找罪受。**
+- **用别人的付费账号**：有朋友是 Apple 开发者能帮你上传 TestFlight。零成本，但得求人。
 
 ## 改 App 图标
 

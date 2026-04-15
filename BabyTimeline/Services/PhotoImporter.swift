@@ -9,9 +9,12 @@ import Vision
 /// 筛选规则（按顺序）：
 /// 1. PHAsset 是一张图片、`creationDate >= birthday`
 /// 2. 照片里至少有 1 张人脸
-/// 3. 如果 Baby 设置了「认人参考照」：至少一张人脸与参考指纹距离 ≤ 阈值
+/// 3. 如果 Baby 设置了「认人参考照」：至少一张人脸与参考指纹距离 ≤ 阈值，
+///    **并且**比任何一张「排除人脸」都更像女儿；
 ///    否则：只要有人脸就算通过
 /// 4. 通过后：读取 GPS → 反查中文地名 → 场景分类 → 落库
+/// 5. 如果照片的拍摄日期正好落在某个生日周年前后 3 天内 → 自动创建
+///    「N 岁生日」里程碑（如果还没有的话），并把这张照片绑定过去
 ///
 /// 重复导入：以 `PHAsset.localIdentifier` 去重。
 @Observable
@@ -56,6 +59,8 @@ final class PhotoImporter {
         // 4. 解归档参考指纹（如果设置了）
         let reference: VNFeaturePrintObservation? = baby.referenceFacePrintData
             .flatMap { FaceRecognitionService.unarchive($0) }
+        let negativeReferences: [VNFeaturePrintObservation] = baby.negativeFacePrints
+            .compactMap { FaceRecognitionService.unarchive($0) }
         let threshold = Float(baby.faceMatchThreshold)
 
         var inserted = 0
@@ -84,6 +89,7 @@ final class PhotoImporter {
                 let result = await FaceRecognitionService.matchResult(
                     in: cgImage,
                     reference: reference,
+                    negativeReferences: negativeReferences,
                     threshold: threshold
                 )
                 guard result.matched else {
@@ -126,6 +132,14 @@ final class PhotoImporter {
             context.insert(entry)
             inserted += 1
 
+            // 10. 生日照自动建里程碑
+            Self.maybeCreateBirthdayMilestone(
+                photoAssetLocalId: asset.localIdentifier,
+                photoDate: meta.creationDate,
+                baby: baby,
+                context: context
+            )
+
             // 每 20 张落一次盘
             if inserted % 20 == 0 {
                 try? context.save()
@@ -142,5 +156,58 @@ final class PhotoImporter {
         let descriptor = FetchDescriptor<PhotoEntry>()
         let all = try context.fetch(descriptor)
         return Set(all.map { $0.assetLocalId })
+    }
+
+    /// 如果 `photoDate` 落在「生日周年 ± 3 天」内，并且还没有同标题的里程碑，
+    /// 就自动创建一条「N 岁生日」并把这张照片绑定过去。
+    ///
+    /// 只取每个生日周年里**最早**遇到的一张照片作为绑定；之后再来的同一天照片不会覆盖。
+    private static func maybeCreateBirthdayMilestone(
+        photoAssetLocalId: String,
+        photoDate: Date,
+        baby: Baby,
+        context: ModelContext
+    ) {
+        let calendar = Calendar(identifier: .gregorian)
+        let years = calendar.dateComponents([.year], from: baby.birthday, to: photoDate).year ?? -1
+        guard years >= 1 else { return }   // 小于一岁不算周年生日
+
+        // 这一年生日的具体日期
+        guard let anniversary = calendar.date(
+            byAdding: .year,
+            value: years,
+            to: baby.birthday
+        ) else { return }
+
+        // 照片日期与周年日的差（天数）
+        let dayDiff = abs(calendar.dateComponents([.day], from: anniversary, to: photoDate).day ?? Int.max)
+        guard dayDiff <= 3 else { return }
+
+        let title = birthdayTitle(years: years)
+
+        // 已有同标题里程碑就不重复建
+        let descriptor = FetchDescriptor<Milestone>(
+            predicate: #Predicate { $0.title == title }
+        )
+        if let existing = try? context.fetch(descriptor), !existing.isEmpty {
+            return
+        }
+
+        let milestone = Milestone(
+            title: title,
+            date: anniversary,
+            note: "从相册里自动识别到的生日照。",
+            linkedAssetLocalId: photoAssetLocalId
+        )
+        context.insert(milestone)
+    }
+
+    private static func birthdayTitle(years: Int) -> String {
+        switch years {
+        case 1: return "第一个生日"
+        case 2: return "第二个生日"
+        case 3: return "第三个生日"
+        default: return "\(years) 岁生日"
+        }
     }
 }

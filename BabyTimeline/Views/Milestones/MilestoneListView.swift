@@ -1,7 +1,10 @@
 import SwiftData
 import SwiftUI
 
-/// 成长里程碑列表：按日期升序显示所有手动记录的关键事件。
+/// 成长里程碑列表：
+/// - 上半：**已记录** —— 父母手动填过的，按日期升序
+/// - 下半：**建议记录** —— 从 `MilestoneCatalog` 里按宝宝月龄自动挑出的发育阶段提醒，
+///   每条都可以一键转成正式的 `Milestone`
 struct MilestoneListView: View {
 
     let baby: Baby
@@ -12,14 +15,45 @@ struct MilestoneListView: View {
 
     @State private var editing: Milestone?
     @State private var showingNew = false
+    /// 点击某条"建议"后跳进的预填表单
+    @State private var preFilledDraft: MilestoneDraft?
 
     var body: some View {
         NavigationStack {
-            Group {
-                if milestones.isEmpty {
-                    EmptyMilestoneView { showingNew = true }
-                } else {
-                    List {
+            content
+                .navigationTitle("成长里程碑")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showingNew = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                }
+                .sheet(isPresented: $showingNew) {
+                    MilestoneEditView(baby: baby, milestone: nil, draft: nil)
+                }
+                .sheet(item: $editing) { milestone in
+                    MilestoneEditView(baby: baby, milestone: milestone, draft: nil)
+                }
+                .sheet(item: $preFilledDraft) { draft in
+                    MilestoneEditView(baby: baby, milestone: nil, draft: draft)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        let suggestions = MilestoneSuggester.suggestions(for: baby, existing: milestones)
+
+        if milestones.isEmpty && suggestions.isEmpty {
+            EmptyMilestoneView { showingNew = true }
+        } else {
+            List {
+                if !milestones.isEmpty {
+                    Section {
                         ForEach(milestones) { milestone in
                             Button {
                                 editing = milestone
@@ -29,27 +63,33 @@ struct MilestoneListView: View {
                             .buttonStyle(.plain)
                         }
                         .onDelete(perform: delete)
-                    }
-                    .listStyle(.plain)
-                }
-            }
-            .navigationTitle("成长里程碑")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingNew = true
-                    } label: {
-                        Image(systemName: "plus")
+                    } header: {
+                        Text("已记录（\(milestones.count)）")
                     }
                 }
+
+                if !suggestions.isEmpty {
+                    Section {
+                        ForEach(suggestions) { suggestion in
+                            Button {
+                                preFilledDraft = MilestoneDraft(
+                                    title: suggestion.entry.title,
+                                    date: suggestion.suggestedDate,
+                                    note: suggestion.entry.detail
+                                )
+                            } label: {
+                                SuggestionRow(baby: baby, suggestion: suggestion)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } header: {
+                        Text("建议记录（按月龄推算）")
+                    } footer: {
+                        Text("根据发育阶段给的提醒，不是固定时间。点一下可以快速添加，App 会预填标题、日期和说明。")
+                    }
+                }
             }
-            .sheet(isPresented: $showingNew) {
-                MilestoneEditView(baby: baby, milestone: nil)
-            }
-            .sheet(item: $editing) { milestone in
-                MilestoneEditView(baby: baby, milestone: milestone)
-            }
+            .listStyle(.insetGrouped)
         }
     }
 
@@ -59,6 +99,61 @@ struct MilestoneListView: View {
         }
         try? context.save()
     }
+}
+
+// MARK: - 建议一条的预填草稿
+
+struct MilestoneDraft: Identifiable {
+    let id = UUID()
+    let title: String
+    let date: Date
+    let note: String
+}
+
+// MARK: - 建议行
+
+private struct SuggestionRow: View {
+    let baby: Baby
+    let suggestion: MilestoneSuggester.Suggestion
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: suggestion.entry.icon)
+                    .foregroundStyle(.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(suggestion.entry.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text("约 \(suggestion.entry.expectedMonths) 月龄 · \(Self.dateFormatter.string(from: suggestion.suggestedDate))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(suggestion.entry.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
+            Image(systemName: "plus.circle.fill")
+                .foregroundStyle(.tint)
+                .font(.title3)
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "zh_CN")
+        df.dateFormat = "yyyy 年 M 月"
+        return df
+    }()
 }
 
 // MARK: - 单行

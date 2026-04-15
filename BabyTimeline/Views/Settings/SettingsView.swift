@@ -58,9 +58,11 @@ struct SettingsView: View {
                     LabeledContent("里程碑", value: "\(milestones.count) 条")
                 }
 
-                // 相册同步
                 // 认人
                 ReferenceFaceSection(baby: baby)
+
+                // 排除人脸（爸爸/妈妈/其他家人）
+                NegativeFaceSection(baby: baby)
 
                 // 相册同步
                 Section {
@@ -304,5 +306,117 @@ private struct ReferenceFaceSection: View {
         baby.referenceFacePrintData = printData
         try? context.save()
         successMessage = "认人照片已设置。记得去「重新扫描相册」。"
+    }
+}
+
+// MARK: - 排除人脸
+
+/// 让用户添加多张「不是女儿」的参考脸（爸爸、妈妈、其他家人等）。
+/// 扫描时任何更像这些脸而不是女儿的照片都会被过滤掉。
+private struct NegativeFaceSection: View {
+    @Bindable var baby: Baby
+
+    @Environment(\.modelContext) private var context
+
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var isProcessing = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+
+    var body: some View {
+        Section {
+            HStack(spacing: 12) {
+                Image(systemName: baby.negativeFacePrints.isEmpty
+                      ? "person.2.slash"
+                      : "person.2.slash.fill")
+                    .font(.title2)
+                    .foregroundStyle(baby.negativeFacePrints.isEmpty ? .secondary : .orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(baby.negativeFacePrints.isEmpty
+                         ? "还没有排除人脸"
+                         : "已排除 \(baby.negativeFacePrints.count) 张脸")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("扫描时会过滤掉更像这些脸的照片")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 4)
+
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Label("加一张不是女儿的脸（爸爸/妈妈/…）", systemImage: "person.crop.rectangle.badge.xmark")
+            }
+            .disabled(baby.referenceFacePrintData == nil)
+
+            if !baby.negativeFacePrints.isEmpty {
+                Button(role: .destructive) {
+                    baby.clearNegativeFacePrints()
+                    try? context.save()
+                    successMessage = "已清空排除人脸"
+                } label: {
+                    Label("清空所有排除人脸", systemImage: "trash")
+                }
+            }
+
+            if isProcessing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("正在分析人脸…").font(.footnote)
+                }
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+            if let successMessage {
+                Text(successMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        } header: {
+            Text("排除人脸")
+        } footer: {
+            if baby.referenceFacePrintData == nil {
+                Text("需要先设置上面的「认人」照片，才能添加排除人脸。")
+            } else {
+                Text("如果你发现扫描结果里把你自己或其他家人错当成女儿了，在这里加一张你本人/那个家人的正脸照，再「重新扫描相册」就能把这类误判过滤掉。可以加多张（爸爸、外公、外婆……）。")
+            }
+        }
+        .onChange(of: pickerItem) {
+            Task { await addNegative() }
+        }
+    }
+
+    private func addNegative() async {
+        guard let pickerItem else { return }
+        errorMessage = nil
+        successMessage = nil
+        isProcessing = true
+        defer {
+            isProcessing = false
+            self.pickerItem = nil
+        }
+
+        guard
+            let data = try? await pickerItem.loadTransferable(type: Data.self),
+            let uiImage = UIImage(data: data),
+            let cgImage = uiImage.cgImage
+        else {
+            errorMessage = "读取照片失败，换一张试试。"
+            return
+        }
+
+        guard let printData = await FaceRecognitionService.generateNegativePrint(from: cgImage) else {
+            errorMessage = "没在这张照片里找到清晰的人脸。请换一张正脸照。"
+            return
+        }
+
+        baby.addNegativeFacePrint(printData)
+        try? context.save()
+        successMessage = "已添加。现在共 \(baby.negativeFacePrints.count) 张排除人脸。记得去「重新扫描相册」。"
     }
 }

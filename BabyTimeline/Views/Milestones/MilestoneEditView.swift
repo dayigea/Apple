@@ -2,10 +2,16 @@ import SwiftData
 import SwiftUI
 
 /// 新建 / 编辑一个里程碑。
+///
+/// 三种打开方式：
+/// - `milestone != nil` → 编辑已有里程碑
+/// - `milestone == nil, draft == nil` → 全空白新建
+/// - `milestone == nil, draft != nil` → 从"建议"点进来，预填标题/日期/说明
 struct MilestoneEditView: View {
 
     let baby: Baby
     let milestone: Milestone?   // nil = 新建
+    let draft: MilestoneDraft?  // nil = 不预填
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -84,11 +90,21 @@ struct MilestoneEditView: View {
     // MARK: - 数据
 
     private func loadInitial() {
-        guard let milestone else { return }
-        title = milestone.title
-        date = milestone.date
-        note = milestone.note ?? ""
-        linkedAssetLocalId = milestone.linkedAssetLocalId
+        if let milestone {
+            title = milestone.title
+            date = milestone.date
+            note = milestone.note ?? ""
+            linkedAssetLocalId = milestone.linkedAssetLocalId
+            return
+        }
+        if let draft {
+            title = draft.title
+            // 如果建议日期是未来（万一系统时钟不对），压到今天
+            date = min(draft.date, .now)
+            // 如果建议日期早于生日（不应该发生），压到生日
+            date = max(date, baby.birthday)
+            note = draft.note
+        }
     }
 
     private func save() {
