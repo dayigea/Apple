@@ -330,7 +330,7 @@ private struct NegativeFaceSection: View {
                       ? "person.2.slash"
                       : "person.2.slash.fill")
                     .font(.title2)
-                    .foregroundStyle(baby.negativeFacePrints.isEmpty ? .secondary : .orange)
+                    .foregroundStyle(baby.negativeFacePrints.isEmpty ? Color.secondary : Color.orange)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(baby.negativeFacePrints.isEmpty
