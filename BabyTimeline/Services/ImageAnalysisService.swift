@@ -51,6 +51,11 @@ enum TagTranslator {
         mapping[identifier]
     }
 
+    /// 全量中文 tag 集合。供 `MilestoneContentAnalyzer` 做"标题包含哪些 tag"的推导。
+    static func allChineseTags() -> Set<String> {
+        Set(mapping.values)
+    }
+
     // 键按字母顺序排列，便于维护
     private static let mapping: [String: String] = [
         // —— 人物 ——

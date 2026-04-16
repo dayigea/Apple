@@ -3,7 +3,8 @@ import Foundation
 /// 给定一个里程碑事件，从时间线里自动挑一张最贴近的照片。
 ///
 /// 两阶段匹配策略：
-/// 1. **内容优先**：如果传入了 `preferringKeywords`（来自 `MilestoneCatalog.Entry.photoKeywords`），
+/// 1. **内容优先**：如果传入了 `preferringKeywords`（通常来自
+///    `MilestoneContentAnalyzer.inferredKeywords(forTitle:)`），
 ///    先在 `PhotoEntry.autoTags` 命中任一关键词的照片里按日期距离挑最近的一张。
 ///    例如「第一个生日」会优先找自动标签里含"生日 / 生日蛋糕 / 蛋糕 / 派对"的照片。
 /// 2. **日期兜底**：如果没有任何照片匹配关键词，或者关键词为空，退化到全库按

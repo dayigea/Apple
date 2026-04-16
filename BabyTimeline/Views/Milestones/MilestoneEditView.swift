@@ -9,11 +9,15 @@ import SwiftUI
 /// - `milestone == nil, draft != nil` → 从"建议"点进来，预填标题/日期/说明
 ///
 /// 照片自动绑定：新建里程碑时（空白或草稿），会用 `MilestonePhotoMatcher`
-/// 从时间线里自动挑一张照片贴上去。策略是**先按内容关键词匹配**（通过
-/// `MilestoneCatalog.entry(forTitle:)?.photoKeywords` 查 `PhotoEntry.autoTags`），
+/// 从时间线里自动挑一张照片贴上去。策略是**先按内容关键词匹配**（关键词由
+/// `MilestoneContentAnalyzer.inferredKeywords(forTitle:)` 从标题自动推导出来），
 /// 没有命中才退化到纯日期最近。用户改日期时只要还没主动选过照片，自动匹配
 /// 会跟着重跑。只要用户手动点了「更换」或「取消绑定」，`photoWasUserEdited = true`，
 /// 自动逻辑就不再干预。
+///
+/// 备注区的「根据照片生成说明」按钮会调用
+/// `MilestoneContentAnalyzer.generatedNote(for:baby:)`，用已绑定照片的内容标签 +
+/// 年龄 + 地点拼一段中文，写回 `note`。
 struct MilestoneEditView: View {
 
     let baby: Baby
@@ -41,9 +45,17 @@ struct MilestoneEditView: View {
 
     private var isEditing: Bool { milestone != nil }
 
-    /// 当前标题对应的内容关键词（从 `MilestoneCatalog` 里查，手写标题拿不到就是空）
+    /// 当前标题对应的内容关键词。
+    /// 不再依赖 catalog 人工声明，而是让 `MilestoneContentAnalyzer` 从标题本身
+    /// 结合 Vision 标签集 + 小同义词表自动推导；手写标题也能命中。
     private var catalogKeywords: [String] {
-        MilestoneCatalog.entry(forTitle: title.trimmingCharacters(in: .whitespaces))?.photoKeywords ?? []
+        MilestoneContentAnalyzer.inferredKeywords(forTitle: title)
+    }
+
+    /// 当前已绑定的照片，用于「根据照片生成说明」按钮
+    private var linkedPhoto: PhotoEntry? {
+        guard let id = linkedAssetLocalId else { return nil }
+        return photos.first(where: { $0.assetLocalId == id })
     }
 
     /// 当前自动匹配照片的拍摄日期与里程碑日期的差距文字，仅在「自动匹配」状态下展示。
@@ -84,9 +96,28 @@ struct MilestoneEditView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("备注") {
+                Section {
                     TextField("比如当时的心情或细节", text: $note, axis: .vertical)
                         .lineLimit(3...6)
+                    if linkedPhoto != nil {
+                        Button {
+                            generateNoteFromPhoto()
+                        } label: {
+                            Label(
+                                note.trimmingCharacters(in: .whitespaces).isEmpty
+                                    ? "根据照片生成说明"
+                                    : "重新根据照片生成说明",
+                                systemImage: "sparkles"
+                            )
+                        }
+                        .font(.footnote)
+                    }
+                } header: {
+                    Text("备注")
+                } footer: {
+                    if linkedPhoto != nil {
+                        Text("点「根据照片生成说明」会读取照片的内容标签、拍摄年龄和地点，拼出一段中文描述，你可以在此基础上继续改。")
+                    }
                 }
 
                 Section {
@@ -210,6 +241,13 @@ struct MilestoneEditView: View {
             in: photos,
             preferringKeywords: catalogKeywords
         )
+    }
+
+    /// 根据当前已绑定照片的内容标签 + 宝宝年龄 + 地点，生成一段中文备注覆盖 `note`。
+    /// 用户可以在此基础上继续编辑；没有绑定照片时按钮不会显示。
+    private func generateNoteFromPhoto() {
+        guard let photo = linkedPhoto else { return }
+        note = MilestoneContentAnalyzer.generatedNote(for: photo, baby: baby)
     }
 
     private func save() {
