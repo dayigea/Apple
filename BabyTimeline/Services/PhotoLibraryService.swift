@@ -51,8 +51,11 @@ enum PhotoLibraryService {
     /// 请求一张用于分析的中等尺寸 CGImage。
     /// 选 512 px 做 Vision 分析足够，再大只是浪费内存与 CPU。
     static func requestAnalysisImage(for asset: PHAsset) async -> CGImage? {
-        await requestImage(for: asset, targetSize: CGSize(width: 512, height: 512))
-            .flatMap { $0.cgImage }
+        return await requestImage(for: asset, targetSize: CGSize(width: 512, height: 512)).flatMap { uiImage in
+            guard let sourceCG = uiImage.cgImage else { return nil }
+            // Make a stable copy of CGImage to avoid relying on UIImage's backing store lifecycle
+            return sourceCG.copy()
+        }
     }
 
     /// 请求一张用于 UI 显示的缩略图（320 pt 一般够 List 里铺满）
