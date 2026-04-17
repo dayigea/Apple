@@ -68,6 +68,11 @@ enum FaceRecognitionService {
     ///   2. **并且** `positive_dist < min(negative_dist) - margin`
     ///      （这张脸比任何一张「排除人脸」都明显更像女儿）
     ///
+    /// **多张正参考**：`references` 是一个数组，通常包含「主参考」+ 若干张不同
+    /// 角度 / 不同月龄的女儿补充参考照。`positiveDist` 取对所有参考的**最小**距离；
+    /// 这是专门用来应对亲子脸型相近的问题——只要候选脸和其中任意一张参考足够像，
+    /// `positiveDist` 就会被拉低，把妈妈/爸爸的脸甩得足够远。
+    ///
     /// 所以如果你把自己的照片加进「排除人脸」，以后你自己被错当成女儿的情况
     /// 就会被过滤掉：那张脸对你的距离会比对女儿的距离更小，条件 2 失败 → 不命中。
     ///
@@ -77,6 +82,7 @@ enum FaceRecognitionService {
     /// - **选最贴近的那张**：一张照片里有多张脸时，评估所有候选，最终用
     ///   `positiveDist` 最小的那张来判定，而不是遇到第一张就返回。
     ///
+    /// - Parameter references: 正参考指纹列表（至少 1 张）。空数组会直接返回不命中。
     /// - Parameter negativeReferences: 排除人脸的指纹列表，可以为空。
     /// - Parameter contrastMargin: 安全余量。正数越大越严格，表示「女儿的距离
     ///   至少要比最近的排除脸小 margin 才算命中」。默认 2.0：只是「勉强更像女儿」
@@ -86,12 +92,14 @@ enum FaceRecognitionService {
     /// - Returns: (是否命中, 照片里总人脸数)
     static func matchResult(
         in cgImage: CGImage,
-        reference: VNFeaturePrintObservation,
+        references: [VNFeaturePrintObservation],
         negativeReferences: [VNFeaturePrintObservation] = [],
         threshold: Float,
         contrastMargin: Float = 2.0,
         minFaceAreaFraction: CGFloat = 0.003
     ) async -> (matched: Bool, faceCount: Int) {
+        guard !references.isEmpty else { return (false, 0) }
+
         let allFaces = await detectFaces(in: cgImage)
         if allFaces.isEmpty { return (false, 0) }
 
@@ -107,12 +115,16 @@ enum FaceRecognitionService {
             ) else {
                 continue
             }
-            // 1. 与女儿的距离
-            var positiveDist: Float = 0
-            do {
-                try candidate.computeDistance(&positiveDist, to: reference)
-            } catch {
-                continue
+            // 1. 与女儿所有参考的最小距离
+            var positiveDist: Float = .greatestFiniteMagnitude
+            for ref in references {
+                var d: Float = 0
+                do {
+                    try candidate.computeDistance(&d, to: ref)
+                    if d < positiveDist { positiveDist = d }
+                } catch {
+                    continue
+                }
             }
             if positiveDist > threshold { continue }
 

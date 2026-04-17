@@ -62,6 +62,9 @@ struct SettingsView: View {
                 // 认人
                 ReferenceFaceSection(baby: baby)
 
+                // 补充参考照（应对亲子脸型相近）
+                ExtraPositiveFaceSection(baby: baby)
+
                 // 排除人脸（爸爸/妈妈/其他家人）
                 NegativeFaceSection(baby: baby)
 
@@ -248,6 +251,8 @@ private struct ReferenceFaceSection: View {
             if baby.referenceFacePrintData != nil {
                 Button(role: .destructive) {
                     baby.referenceFacePrintData = nil
+                    // 主参考清掉后，补充参考也一起清，避免留着一堆无主的补充
+                    baby.clearExtraPositiveFacePrints()
                     try? context.save()
                     successMessage = "已清除认人照片"
                 } label: {
@@ -305,7 +310,7 @@ private struct ReferenceFaceSection: View {
         } header: {
             Text("认人")
         } footer: {
-            Text("选一张只包含女儿本人的清晰正脸照，App 会生成人脸指纹。之后扫描时只保留含有她本人的照片。改了认人照或阈值后，记得「重新扫描相册」。")
+            Text("选一张只包含女儿本人的清晰正脸照作为**主参考**。如果父母和女儿脸型比较像，建议再去下面「女儿补充参考照」里加几张不同角度 / 不同月龄的女儿照，匹配会更准。改了认人照或阈值后，记得「重新扫描相册」或「重新应用过滤规则」。")
         }
         .onChange(of: pickerItem) {
             Task { await generateReference() }
@@ -456,5 +461,121 @@ private struct NegativeFaceSection: View {
         baby.addNegativeFacePrint(printData)
         try? context.save()
         successMessage = "已添加。现在共 \(baby.negativeFacePrints.count) 张排除人脸。记得去「重新扫描相册」。"
+    }
+}
+
+// MARK: - 补充正参考照（应对亲子脸型相近）
+
+/// 让用户在主认人照之外再追加几张「不同角度 / 不同月龄」的女儿照片作为补充参考。
+///
+/// 为什么需要这个：`VNGenerateImageFeaturePrintRequest` 不是专门的人脸模型，
+/// 亲子脸型相近时单张参考照容易分不清父母和孩子。放多张女儿不同姿势 / 时期的
+/// 参考照后，匹配时 `positiveDist` 取对所有参考的最小值——真正是女儿的脸
+/// 只要和其中**任意一张**参考足够像，就能稳定命中；父母脸不会因此受益。
+private struct ExtraPositiveFaceSection: View {
+    @Bindable var baby: Baby
+
+    @Environment(\.modelContext) private var context
+
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var isProcessing = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+
+    var body: some View {
+        Section {
+            HStack(spacing: 12) {
+                Image(systemName: baby.extraPositiveFacePrints.isEmpty
+                      ? "person.crop.rectangle.stack"
+                      : "person.crop.rectangle.stack.fill")
+                    .font(.title2)
+                    .foregroundStyle(baby.extraPositiveFacePrints.isEmpty ? Color.secondary : Color.green)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(baby.extraPositiveFacePrints.isEmpty
+                         ? "只有一张主参考"
+                         : "已补充 \(baby.extraPositiveFacePrints.count) 张女儿参考照")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("不同角度 / 月龄越多，识别越稳")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 4)
+
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Label("追加一张女儿的补充参考照", systemImage: "plus.rectangle.on.rectangle")
+            }
+            .disabled(baby.referenceFacePrintData == nil)
+
+            if !baby.extraPositiveFacePrints.isEmpty {
+                Button(role: .destructive) {
+                    baby.clearExtraPositiveFacePrints()
+                    try? context.save()
+                    successMessage = "已清空补充参考照"
+                } label: {
+                    Label("清空所有补充参考照", systemImage: "trash")
+                }
+            }
+
+            if isProcessing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("正在分析人脸…").font(.footnote)
+                }
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+            if let successMessage {
+                Text(successMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        } header: {
+            Text("女儿补充参考照")
+        } footer: {
+            if baby.referenceFacePrintData == nil {
+                Text("需要先设置上面的「认人」主参考照，才能追加补充参考。")
+            } else {
+                Text("父母和孩子脸型相近时，单张参考照很容易分不清。多放几张**不同角度 / 不同月龄**的女儿照片（正脸、侧脸、微笑、6 个月 / 1 岁…），匹配时 `positiveDist` 会取对所有参考的最小值——女儿的脸更容易被命中，父母的脸不会跟着变像。建议 3–5 张。加完记得「重新扫描相册」或「重新应用过滤规则」。")
+            }
+        }
+        .onChange(of: pickerItem) {
+            Task { await addExtra() }
+        }
+    }
+
+    private func addExtra() async {
+        guard let pickerItem else { return }
+        errorMessage = nil
+        successMessage = nil
+        isProcessing = true
+        defer {
+            isProcessing = false
+            self.pickerItem = nil
+        }
+
+        guard
+            let data = try? await pickerItem.loadTransferable(type: Data.self),
+            let uiImage = UIImage(data: data),
+            let cgImage = uiImage.cgImage
+        else {
+            errorMessage = "读取照片失败，换一张试试。"
+            return
+        }
+
+        guard let printData = await FaceRecognitionService.generateReferencePrint(from: cgImage) else {
+            errorMessage = "没在这张照片里找到清晰的人脸。请换一张正脸照。"
+            return
+        }
+
+        baby.addExtraPositiveFacePrint(printData)
+        try? context.save()
+        successMessage = "已添加。现在共 \(baby.extraPositiveFacePrints.count) 张补充参考。记得去「重新应用过滤规则」。"
     }
 }

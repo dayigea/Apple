@@ -57,8 +57,9 @@ final class PhotoImporter {
         let existing = (try? Self.existingLocalIds(in: context)) ?? []
 
         // 4. 解归档参考指纹（如果设置了）
-        let reference: VNFeaturePrintObservation? = baby.referenceFacePrintData
-            .flatMap { FaceRecognitionService.unarchive($0) }
+        //    主参考 + 补充参考一起构成 positive 列表，匹配时用最小距离。
+        let references: [VNFeaturePrintObservation] = baby.positiveFacePrints
+            .compactMap { FaceRecognitionService.unarchive($0) }
         let negativeReferences: [VNFeaturePrintObservation] = baby.negativeFacePrints
             .compactMap { FaceRecognitionService.unarchive($0) }
         let threshold = Float(baby.faceMatchThreshold)
@@ -85,10 +86,10 @@ final class PhotoImporter {
 
             // 6. 人脸检查（认人优先，否则退化到「任意人脸」）
             let faceCount: Int
-            if let reference {
+            if !references.isEmpty {
                 let result = await FaceRecognitionService.matchResult(
                     in: cgImage,
-                    reference: reference,
+                    references: references,
                     negativeReferences: negativeReferences,
                     threshold: threshold
                 )

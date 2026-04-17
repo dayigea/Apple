@@ -41,10 +41,9 @@ final class PhotoReFilter {
         isRunning = true
         defer { isRunning = false }
 
-        guard
-            let refData = baby.referenceFacePrintData,
-            let reference = FaceRecognitionService.unarchive(refData)
-        else {
+        let references: [VNFeaturePrintObservation] = baby.positiveFacePrints
+            .compactMap { FaceRecognitionService.unarchive($0) }
+        guard !references.isEmpty else {
             phase = .failed("还没设置认人参考照，没法复核。先在上面「认人」里选一张。")
             return
         }
@@ -89,7 +88,7 @@ final class PhotoReFilter {
 
             let result = await FaceRecognitionService.matchResult(
                 in: cgImage,
-                reference: reference,
+                references: references,
                 negativeReferences: negativeReferences,
                 threshold: threshold
             )
