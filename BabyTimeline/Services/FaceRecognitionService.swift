@@ -66,25 +66,40 @@ enum FaceRecognitionService {
     /// 匹配策略是「对比式」的：
     ///   1. `positive_dist <= threshold`（与女儿的指纹距离在阈值内）
     ///   2. **并且** `positive_dist < min(negative_dist) - margin`
-    ///      （这张脸比任何一张「排除人脸」都更像女儿）
+    ///      （这张脸比任何一张「排除人脸」都明显更像女儿）
     ///
     /// 所以如果你把自己的照片加进「排除人脸」，以后你自己被错当成女儿的情况
     /// 就会被过滤掉：那张脸对你的距离会比对女儿的距离更小，条件 2 失败 → 不命中。
     ///
+    /// 此外：
+    /// - **忽略过小的背景脸**：bbox 面积占比低于 `minFaceAreaFraction` 的脸
+    ///   直接不看，避免路人甲乙丙被当成女儿。
+    /// - **选最贴近的那张**：一张照片里有多张脸时，评估所有候选，最终用
+    ///   `positiveDist` 最小的那张来判定，而不是遇到第一张就返回。
+    ///
     /// - Parameter negativeReferences: 排除人脸的指纹列表，可以为空。
-    /// - Parameter contrastMargin: 安全余量。正数越大越严格。0 就是
-    ///   「只要更像女儿一点点就算女儿」。默认 0 已经能解决大部分误判。
+    /// - Parameter contrastMargin: 安全余量。正数越大越严格，表示「女儿的距离
+    ///   至少要比最近的排除脸小 margin 才算命中」。默认 2.0：只是「勉强更像女儿」
+    ///   不够，得明显更像。
+    /// - Parameter minFaceAreaFraction: 人脸 bbox 的归一化面积下限。默认 0.003
+    ///   ≈ 整张照片 0.3%，比这还小的基本是背景里的路人，直接跳过。
     /// - Returns: (是否命中, 照片里总人脸数)
     static func matchResult(
         in cgImage: CGImage,
         reference: VNFeaturePrintObservation,
         negativeReferences: [VNFeaturePrintObservation] = [],
         threshold: Float,
-        contrastMargin: Float = 0
+        contrastMargin: Float = 2.0,
+        minFaceAreaFraction: CGFloat = 0.003
     ) async -> (matched: Bool, faceCount: Int) {
-        let faces = await detectFaces(in: cgImage)
-        if faces.isEmpty { return (false, 0) }
+        let allFaces = await detectFaces(in: cgImage)
+        if allFaces.isEmpty { return (false, 0) }
 
+        // 过掉太小的背景脸，避免把路人/合影里的侧脸当成女儿
+        let faces = allFaces.filter { boxArea($0.boundingBox) >= minFaceAreaFraction }
+        if faces.isEmpty { return (false, allFaces.count) }
+
+        var bestCandidate: (positiveDist: Float, negativeMinDist: Float)?
         for face in faces {
             guard let candidate = await generatePrint(
                 cgImage: cgImage,
@@ -113,18 +128,27 @@ enum FaceRecognitionService {
                 }
             }
 
-            // 没有排除样本：退化成原来的"只要进阈值就算"
-            if negativeReferences.isEmpty {
-                return (true, faces.count)
+            // 记录当前最像女儿的那一张，用它来做最终判定
+            if bestCandidate == nil || positiveDist < bestCandidate!.positiveDist {
+                bestCandidate = (positiveDist, negativeMinDist)
             }
-
-            // 有排除样本：必须比任何一个排除脸都明显更像女儿
-            if positiveDist + contrastMargin < negativeMinDist {
-                return (true, faces.count)
-            }
-            // 否则认为这张脸更像排除人脸（或相差不大），不算命中
         }
-        return (false, faces.count)
+
+        guard let best = bestCandidate else {
+            // 没有任何一张脸进入阈值
+            return (false, allFaces.count)
+        }
+
+        // 没有排除样本：只要有脸通过阈值就算命中
+        if negativeReferences.isEmpty {
+            return (true, allFaces.count)
+        }
+
+        // 有排除样本：最像女儿的那张脸还必须明显比任何排除脸更像女儿
+        if best.positiveDist + contrastMargin < best.negativeMinDist {
+            return (true, allFaces.count)
+        }
+        return (false, allFaces.count)
     }
 
     /// 把一张任意包含人脸的图片变成可归档的排除人脸指纹。

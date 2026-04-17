@@ -16,6 +16,7 @@ struct SettingsView: View {
 
     @State private var avatarItem: PhotosPickerItem?
     @State private var importer = PhotoImporter()
+    @State private var refilter = PhotoReFilter()
     @State private var showingDeleteConfirm = false
 
     var body: some View {
@@ -76,9 +77,27 @@ struct SettingsView: View {
                             Label("重新扫描相册", systemImage: "arrow.clockwise")
                         }
                     }
-                    .disabled(isScanning)
+                    .disabled(isScanning || isRefiltering)
+
+                    Button {
+                        Task { await refilter.run(baby: baby, context: context) }
+                    } label: {
+                        switch refilter.phase {
+                        case .running(let p, let t):
+                            Label("正在复核 \(p)/\(t) …", systemImage: "line.3.horizontal.decrease.circle")
+                        default:
+                            Label("重新应用过滤规则", systemImage: "line.3.horizontal.decrease.circle")
+                        }
+                    }
+                    .disabled(isScanning || isRefiltering || baby.referenceFacePrintData == nil)
+
+                    if let message = refilterMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 } footer: {
-                    Text("会把新拍的、生日之后含人脸的照片补进时间线。不会修改系统相册。")
+                    Text("「重新扫描相册」只会把**新拍的**照片补进时间线，已经入库的不会再复核。\n如果你刚刚加了「排除人脸」或者调严了阈值，想把时间线里已有的误判（比如你自己的照片）清掉，就点「重新应用过滤规则」——它会用当前设置重新检查每一张已有记录。系统相册的原图都不会动。")
                 }
 
                 // 危险区
@@ -118,6 +137,25 @@ struct SettingsView: View {
         if case .scanning = importer.phase { return true }
         if case .requestingAuth = importer.phase { return true }
         return false
+    }
+
+    private var isRefiltering: Bool {
+        if case .running = refilter.phase { return true }
+        return false
+    }
+
+    private var refilterMessage: String? {
+        switch refilter.phase {
+        case .finished(let kept, let removed, let missing):
+            var parts = ["保留 \(kept) 张"]
+            if removed > 0 { parts.append("移除 \(removed) 张") }
+            if missing > 0 { parts.append("相册已删 \(missing) 张") }
+            return "复核完成：\(parts.joined(separator: "，"))。"
+        case .failed(let msg):
+            return msg
+        default:
+            return nil
+        }
     }
 
     private func loadAvatar() async {

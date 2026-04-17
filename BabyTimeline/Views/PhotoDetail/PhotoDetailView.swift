@@ -2,12 +2,19 @@ import SwiftData
 import SwiftUI
 
 /// 单张照片的详情页：大图 + 年龄 / 日期 / 地点 / 标签 / 备注 / 收藏。
+///
+/// 工具栏里右上角是「收藏」，左侧的「…」菜单里提供「从时间线里移除」——
+/// 把这张照片的 `PhotoEntry` 从本地库里删掉，并顺带把所有指向它的
+/// 里程碑 `linkedAssetLocalId` 清空。系统相册里的原图不会动。
 struct PhotoDetailView: View {
 
     let baby: Baby
     @Bindable var entry: PhotoEntry
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var showingRemoveConfirm = false
 
     var body: some View {
         ScrollView {
@@ -67,16 +74,56 @@ struct PhotoDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    entry.isFavorite.toggle()
-                    try? context.save()
+                Menu {
+                    Button {
+                        entry.isFavorite.toggle()
+                        try? context.save()
+                    } label: {
+                        Label(
+                            entry.isFavorite ? "取消收藏" : "收藏",
+                            systemImage: entry.isFavorite ? "star.slash" : "star"
+                        )
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        showingRemoveConfirm = true
+                    } label: {
+                        Label("从时间线里移除", systemImage: "trash")
+                    }
                 } label: {
-                    Image(systemName: entry.isFavorite ? "star.fill" : "star")
-                        .foregroundStyle(entry.isFavorite ? .yellow : .primary)
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
+        .confirmationDialog(
+            "把这张照片从时间线里移除？",
+            isPresented: $showingRemoveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("移除", role: .destructive) { removeFromTimeline() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只会从 App 里删掉这条记录，系统相册的原图不会动。绑定这张照片的里程碑会变成「未绑定照片」，但里程碑本身不会被删除。")
+        }
         .onDisappear { try? context.save() }
+    }
+
+    // MARK: - 移除
+
+    private func removeFromTimeline() {
+        let assetId = entry.assetLocalId
+        // 先解绑所有指向这张照片的里程碑，避免留下死链接
+        let descriptor = FetchDescriptor<Milestone>(
+            predicate: #Predicate { $0.linkedAssetLocalId == assetId }
+        )
+        if let linkedMilestones = try? context.fetch(descriptor) {
+            for milestone in linkedMilestones {
+                milestone.linkedAssetLocalId = nil
+            }
+        }
+        context.delete(entry)
+        try? context.save()
+        dismiss()
     }
 
     // MARK: - Helpers
