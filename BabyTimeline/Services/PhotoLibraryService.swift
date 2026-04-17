@@ -79,25 +79,38 @@ enum PhotoLibraryService {
         deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic
     ) async -> UIImage? {
         await withCheckedContinuation { continuation in
+            let gate = ContinuationGate()
             let options = PHImageRequestOptions()
             options.isNetworkAccessAllowed = true
-            options.deliveryMode = deliveryMode
+            // 导入 / 分析路径要求只拿一次最终图：opportunistic 会先回调低清图
+            // 再回调高清图，这种多次回调 + 我们之前用 `var didResume = false`
+            // 跨线程更新的写法存在竞态，可能双重 resume → EXC_BAD_ACCESS。
+            // highQualityFormat 保证只触发一次非降级回调，再配合 ContinuationGate
+            // 把所有路径收敛到「最多 resume 一次」。
+            options.deliveryMode = deliveryMode == .opportunistic
+                ? .highQualityFormat
+                : deliveryMode
             options.resizeMode = .fast
-            // 一次性回调，避免拿到低清图后又被高清图覆盖重复触发
             options.isSynchronous = false
 
-            var didResume = false
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: targetSize,
                 contentMode: .aspectFit,
                 options: options
             ) { image, info in
+                // iCloud 下载失败 / 取消 / 降级图都不 resume，等最终非降级图。
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                // 只在非降级图或最终图时 resume
-                if !didResume && !isDegraded {
-                    didResume = true
-                    continuation.resume(returning: image)
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
+                if isDegraded { return }
+                // 最终图到了（可能是 nil，比如 iCloud 下载失败）
+                if gate.open() {
+                    if isCancelled || hasError {
+                        continuation.resume(returning: nil)
+                    } else {
+                        continuation.resume(returning: image)
+                    }
                 }
             }
         }

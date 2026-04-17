@@ -14,9 +14,10 @@ enum ImageAnalysisService {
     /// 返回一组已翻译成中文的场景标签，按 confidence 降序去重。
     static func classifyScene(_ image: CGImage) async -> [String] {
         await withCheckedContinuation { continuation in
+            let gate = ContinuationGate()
             let request = VNClassifyImageRequest { request, _ in
                 guard let observations = request.results as? [VNClassificationObservation] else {
-                    continuation.resume(returning: [])
+                    if gate.open() { continuation.resume(returning: []) }
                     return
                 }
                 // 过滤低置信度 + 去重 + 翻译为中文
@@ -29,13 +30,14 @@ enum ImageAnalysisService {
                         if tags.count >= maxTagCount { break }
                     }
                 }
-                continuation.resume(returning: tags)
+                if gate.open() { continuation.resume(returning: tags) }
             }
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
             do {
                 try handler.perform([request])
+                if gate.open() { continuation.resume(returning: []) }
             } catch {
-                continuation.resume(returning: [])
+                if gate.open() { continuation.resume(returning: []) }
             }
         }
     }

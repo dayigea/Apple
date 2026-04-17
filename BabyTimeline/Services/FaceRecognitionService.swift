@@ -26,15 +26,24 @@ enum FaceRecognitionService {
     /// 检测照片里所有人脸 bbox（Vision 坐标系：原点左下，归一化 0–1）
     static func detectFaces(in cgImage: CGImage) async -> [VNFaceObservation] {
         await withCheckedContinuation { continuation in
+            let gate = ContinuationGate()
             let request = VNDetectFaceRectanglesRequest { request, _ in
                 let faces = (request.results as? [VNFaceObservation]) ?? []
-                continuation.resume(returning: faces)
+                if gate.open() {
+                    continuation.resume(returning: faces)
+                }
             }
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             do {
                 try handler.perform([request])
+                // handler.perform 是同步的——如果回调没触发（极少见），我们兜底 resume 一次
+                if gate.open() {
+                    continuation.resume(returning: [])
+                }
             } catch {
-                continuation.resume(returning: [])
+                if gate.open() {
+                    continuation.resume(returning: [])
+                }
             }
         }
     }
@@ -192,17 +201,25 @@ enum FaceRecognitionService {
         faceBox: CGRect
     ) async -> VNFeaturePrintObservation? {
         await withCheckedContinuation { continuation in
+            let gate = ContinuationGate()
             let request = VNGenerateImageFeaturePrintRequest { request, _ in
                 let obs = (request.results as? [VNFeaturePrintObservation])?.first
-                continuation.resume(returning: obs)
+                if gate.open() {
+                    continuation.resume(returning: obs)
+                }
             }
             // 把人脸框外扩 20%，带上一点头发和下巴，特征更稳
             request.regionOfInterest = expand(faceBox, by: 0.2)
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             do {
                 try handler.perform([request])
+                if gate.open() {
+                    continuation.resume(returning: nil)
+                }
             } catch {
-                continuation.resume(returning: nil)
+                if gate.open() {
+                    continuation.resume(returning: nil)
+                }
             }
         }
     }
