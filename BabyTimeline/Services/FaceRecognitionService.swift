@@ -94,8 +94,8 @@ enum FaceRecognitionService {
     /// - Parameter references: 正参考指纹列表（至少 1 张）。空数组会直接返回不命中。
     /// - Parameter negativeReferences: 排除人脸的指纹列表，可以为空。
     /// - Parameter contrastMargin: 安全余量。正数越大越严格，表示「女儿的距离
-    ///   至少要比最近的排除脸小 margin 才算命中」。默认 2.0：只是「勉强更像女儿」
-    ///   不够，得明显更像。
+    ///   至少要比最近的排除脸小 margin 才算命中」。默认 0：只要严格更像女儿就算过。
+    ///   亲子脸型天然相近，margin 设大会把真女儿也挡在外面。
     /// - Parameter minFaceAreaFraction: 人脸 bbox 的归一化面积下限。默认 0.003
     ///   ≈ 整张照片 0.3%，比这还小的基本是背景里的路人，直接跳过。
     /// - Returns: (是否命中, 照片里总人脸数)
@@ -104,7 +104,7 @@ enum FaceRecognitionService {
         references: [VNFeaturePrintObservation],
         negativeReferences: [VNFeaturePrintObservation] = [],
         threshold: Float,
-        contrastMargin: Float = 2.0,
+        contrastMargin: Float = 0,
         minFaceAreaFraction: CGFloat = 0.003
     ) async -> (matched: Bool, faceCount: Int) {
         guard !references.isEmpty else { return (false, 0) }
@@ -116,7 +116,12 @@ enum FaceRecognitionService {
         let faces = allFaces.filter { boxArea($0.boundingBox) >= minFaceAreaFraction }
         if faces.isEmpty { return (false, allFaces.count) }
 
-        var bestCandidate: (positiveDist: Float, negativeMinDist: Float)?
+        // 逐张脸独立判定：只要有任意一张脸同时满足
+        //   (1) 与女儿参考距离 ≤ threshold
+        //   (2) 女儿距离 + margin < 排除脸距离（有排除样本时才查）
+        // 就算这张照片里含女儿。不要用「positiveDist 最小的那张」做裁决——
+        // 一张合影里最像女儿的那张脸若碰巧也和某张排除脸很像（亲子脸型相近），
+        // 会把同一张照片里真正的女儿脸也一起误杀。
         for face in faces {
             guard let candidate = await generatePrint(
                 cgImage: cgImage,
@@ -124,6 +129,7 @@ enum FaceRecognitionService {
             ) else {
                 continue
             }
+
             // 1. 与女儿所有参考的最小距离
             var positiveDist: Float = .greatestFiniteMagnitude
             for ref in references {
@@ -137,7 +143,12 @@ enum FaceRecognitionService {
             }
             if positiveDist > threshold { continue }
 
-            // 2. 与所有排除人脸的最小距离
+            // 2. 没有排除样本：这张脸已经通过阈值，直接判为命中
+            if negativeReferences.isEmpty {
+                return (true, allFaces.count)
+            }
+
+            // 3. 有排除样本：这张脸还必须明显比任何排除脸更像女儿
             var negativeMinDist: Float = .greatestFiniteMagnitude
             for neg in negativeReferences {
                 var d: Float = 0
@@ -148,27 +159,11 @@ enum FaceRecognitionService {
                     continue
                 }
             }
-
-            // 记录当前最像女儿的那一张，用它来做最终判定
-            if bestCandidate == nil || positiveDist < bestCandidate!.positiveDist {
-                bestCandidate = (positiveDist, negativeMinDist)
+            if positiveDist + contrastMargin < negativeMinDist {
+                return (true, allFaces.count)
             }
         }
 
-        guard let best = bestCandidate else {
-            // 没有任何一张脸进入阈值
-            return (false, allFaces.count)
-        }
-
-        // 没有排除样本：只要有脸通过阈值就算命中
-        if negativeReferences.isEmpty {
-            return (true, allFaces.count)
-        }
-
-        // 有排除样本：最像女儿的那张脸还必须明显比任何排除脸更像女儿
-        if best.positiveDist + contrastMargin < best.negativeMinDist {
-            return (true, allFaces.count)
-        }
         return (false, allFaces.count)
     }
 
