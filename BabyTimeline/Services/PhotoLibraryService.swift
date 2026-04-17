@@ -51,11 +51,39 @@ enum PhotoLibraryService {
     /// 请求一张用于分析的中等尺寸 CGImage。
     /// 选 512 px 做 Vision 分析足够，再大只是浪费内存与 CPU。
     static func requestAnalysisImage(for asset: PHAsset) async -> CGImage? {
-        return await requestImage(for: asset, targetSize: CGSize(width: 512, height: 512)).flatMap { uiImage in
-            guard let sourceCG = uiImage.cgImage else { return nil }
-            // Make a stable copy of CGImage to avoid relying on UIImage's backing store lifecycle
-            return sourceCG.copy()
+        guard let uiImage = await requestImage(for: asset, targetSize: CGSize(width: 512, height: 512)) else {
+            return nil
         }
+        guard let sourceCG = uiImage.cgImage else { return nil }
+        // `sourceCG.copy()` 只是个浅拷贝，底层 data provider 仍指向 UIImage 持有的
+        // 那块 IOSurface/CVPixelBuffer。UIImage 一旦在 Swift 堆上被释放，Core Image
+        // 异步的 `CI::RenderCompletionQueue` 如果还在跑 Vision 请求，就会读到已被
+        // 释放的后备内存，触发 libRPAC.dylib 里 QoS 哈希表的 EXC_BAD_ACCESS。
+        // 这里把图像整体画到一块**我们自己拥有的**位图里，得到的 CGImage 就完全
+        // 和原 UIImage 解耦，后续 Vision/CoreImage 异步处理就安全了。
+        return detachCGImage(sourceCG)
+    }
+
+    /// 把一个 CGImage 画到新的位图上下文里，得到一份拥有独立数据的 CGImage。
+    /// 代价是一次 RGBA 解码（512x512 ≈ 1MB），但换来 Vision 处理期间的内存安全。
+    private static func detachCGImage(_ source: CGImage) -> CGImage? {
+        let width = source.width
+        let height = source.height
+        guard width > 0, height > 0 else { return nil }
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo: UInt32 = CGBitmapInfo.byteOrder32Little.rawValue
+            | CGImageAlphaInfo.premultipliedFirst.rawValue
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else { return nil }
+        ctx.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return ctx.makeImage()
     }
 
     /// 请求一张用于 UI 显示的缩略图（320 pt 一般够 List 里铺满）
