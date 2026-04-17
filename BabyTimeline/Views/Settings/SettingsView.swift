@@ -390,7 +390,7 @@ private struct NegativeFaceSection: View {
             .padding(.vertical, 4)
 
             PhotosPicker(selection: $pickerItem, matching: .images) {
-                Label("加一张不是女儿的脸（爸爸/妈妈/…）", systemImage: "person.crop.rectangle.badge.xmark")
+                Label("加一张不是女儿的脸（爸爸/妈妈/…）", systemImage: "person.badge.minus")
             }
             .disabled(baby.referenceFacePrintData == nil)
 
@@ -486,8 +486,8 @@ private struct ExtraPositiveFaceSection: View {
         Section {
             HStack(spacing: 12) {
                 Image(systemName: baby.extraPositiveFacePrints.isEmpty
-                      ? "person.crop.rectangle.stack"
-                      : "person.crop.rectangle.stack.fill")
+                      ? "person.2.circle"
+                      : "person.2.circle.fill")
                     .font(.title2)
                     .foregroundStyle(baby.extraPositiveFacePrints.isEmpty ? Color.secondary : Color.green)
 
@@ -506,7 +506,7 @@ private struct ExtraPositiveFaceSection: View {
             .padding(.vertical, 4)
 
             PhotosPicker(selection: $pickerItem, matching: .images) {
-                Label("追加一张女儿的补充参考照", systemImage: "plus.rectangle.on.rectangle")
+                Label("追加一张女儿的补充参考照", systemImage: "person.badge.plus")
             }
             .disabled(baby.referenceFacePrintData == nil)
 

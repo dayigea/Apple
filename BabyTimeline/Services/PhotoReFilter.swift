@@ -15,8 +15,9 @@ import Vision
 ///
 /// 流程（按顺序）：
 /// 1. 要求设置了「认人」参考照，否则没什么可过滤的，直接结束。
-/// 2. 拉出所有 `PhotoEntry`，依次通过 `PHAsset.localIdentifier` 回到系统相册。
-///    - 如果 asset 在相册里已经被删掉了，我们也把 SwiftData 里的 entry 删掉。
+/// 2. 拉出所有 `PhotoEntry` 的 `assetLocalId`（纯字符串），然后逐个重新 fetch
+///    对应的模型对象。这样做是因为 SwiftData 的模型对象在 `context.delete` +
+///    `context.save` 之后可能失效（EXC_BAD_ACCESS），直接持有整个数组不安全。
 /// 3. 用 `FaceRecognitionService.matchResult` 复核：
 ///    - 匹配失败 → 删除 entry，同时把所有指向它的里程碑 `linkedAssetLocalId` 清空
 ///    - 匹配成功 → 保留
@@ -52,6 +53,8 @@ final class PhotoReFilter {
             .compactMap { FaceRecognitionService.unarchive($0) }
         let threshold = Float(baby.faceMatchThreshold)
 
+        // 先只取所有 assetLocalId（纯 String），不持有 PhotoEntry 对象。
+        // 这样后续 delete + save 不会让数组里的其他元素变成野指针。
         let descriptor = FetchDescriptor<PhotoEntry>(
             sortBy: [SortDescriptor(\.creationDate, order: .forward)]
         )
@@ -59,7 +62,8 @@ final class PhotoReFilter {
             phase = .failed("读取时间线记录失败。")
             return
         }
-        if entries.isEmpty {
+        let allIds = entries.map { $0.assetLocalId }
+        if allIds.isEmpty {
             phase = .finished(kept: 0, removed: 0, missing: 0)
             return
         }
@@ -67,21 +71,29 @@ final class PhotoReFilter {
         var kept = 0
         var removed = 0
         var missing = 0
-        phase = .running(processed: 0, total: entries.count)
+        phase = .running(processed: 0, total: allIds.count)
 
-        for (index, entry) in entries.enumerated() {
+        for (index, assetId) in allIds.enumerated() {
             defer {
-                phase = .running(processed: index + 1, total: entries.count)
+                phase = .running(processed: index + 1, total: allIds.count)
             }
 
-            guard let asset = PhotoLibraryService.asset(withLocalIdentifier: entry.assetLocalId) else {
-                // 系统相册里已经没有这张了，顺手清掉
+            // 每次循环重新 fetch 这一条，保证拿到的是活的模型对象
+            let entryDescriptor = FetchDescriptor<PhotoEntry>(
+                predicate: #Predicate { $0.assetLocalId == assetId }
+            )
+            guard let entry = (try? context.fetch(entryDescriptor))?.first else {
+                // 已经在前面的循环里被删掉了（理论上不会发生），跳过
+                missing += 1
+                continue
+            }
+
+            guard let asset = PhotoLibraryService.asset(withLocalIdentifier: assetId) else {
                 Self.removeEntry(entry, in: context)
                 missing += 1
                 continue
             }
             guard let cgImage = await PhotoLibraryService.requestAnalysisImage(for: asset) else {
-                // 取图失败不贸然删，保留
                 kept += 1
                 continue
             }
@@ -110,8 +122,6 @@ final class PhotoReFilter {
 
     // MARK: - Helpers
 
-    /// 删掉一条 `PhotoEntry`，并把所有绑在它上面的里程碑 `linkedAssetLocalId`
-    /// 清空，避免留下指向已删除照片的死链接。里程碑条目本身保留。
     private static func removeEntry(_ entry: PhotoEntry, in context: ModelContext) {
         let assetId = entry.assetLocalId
         let descriptor = FetchDescriptor<Milestone>(
