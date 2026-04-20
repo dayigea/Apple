@@ -56,8 +56,7 @@ Apple/
     │   ├── MetadataExtractor.swift
     │   ├── GeocodingService.swift
     │   ├── PhotoImporter.swift             # 扫相册 + 生日自动建里程碑
-    │   ├── MilestoneCatalog.swift          # 发育阶段参考目录
-    │   ├── MilestoneSuggester.swift        # 按月龄从目录里挑「建议」
+    │   ├── PhotoMilestoneSuggester.swift   # 从时间线照片内容直接生成里程碑建议
     │   ├── MilestoneContentAnalyzer.swift  # 从标题反推关键词 + 根据照片生成备注
     │   └── MilestonePhotoMatcher.swift     # 先按内容关键词再按日期，两阶段自动配照片
     └── Views/
@@ -233,16 +232,20 @@ open BabyTimeline.xcodeproj
 
 ### 里程碑自动建议 / 自动生日是怎么工作的
 
-两套互补的机制，都**不上云、不用 AI 模型**，纯本地规则：
+三套互补的机制，都**不上云、不用 AI 模型**，纯本地规则：
 
-1. **按月龄建议（`MilestoneCatalog` + `MilestoneSuggester`）**
-   - 内置 ~22 条常见发育节点：抬头 / 微笑 / 翻身 / 独坐 / 吃辅食 / 爬行 / 独立走路 / 第一个生日 / 跑 / 说短句…
-   - 数据是静态的、写死在 `MilestoneCatalog.swift` 里，不会联网，也没「AI 医学建议」这种责任问题
-   - `MilestoneSuggester` 每次进里程碑 Tab 时都会按以下规则过滤：
-     - `月龄 >= entry.expectedMonths`（宝宝实际到了这个阶段）
-     - **且** 已记录的里程碑里没有同名条目（按 `title` 精确匹配）
-   - 满足条件的进入「建议记录」区，点一下跳到 `MilestoneEditView`，预填 **标题 / 建议日期（生日 + N 个月）/ 说明**；你只需要改一改日期确认就好
-   - 一旦你保存过同名的里程碑，这条就会自动从建议列表里消失
+1. **从照片内容直接生成建议（`PhotoMilestoneSuggester`）**
+   - 不再按月龄硬塞「该到 X 月了，要不要记一下抬头」之类的提示——所有建议都必须有**真实照片证据**做支撑
+   - 内置一份「触发词 → 标题/图标」规则表（约 30 条）：
+     - 活动类：`走路 → 第一次走路`、`游泳 → 第一次游泳`、`飞机 → 第一次坐飞机` …
+     - 地点类：`海滩 → 第一次去海边`、`动物园 → 第一次去动物园`、`雪 → 第一次见到雪` …
+     - 动物：`狗/猫/鸟/鱼/兔子 → 第一次见到 …`
+     - 美食：`蛋糕 → 第一次吃蛋糕`
+     - 节日：`圣诞节 / 新年 / 万圣节 / 婚礼 / 派对 → 第一次过 / 参加 …`
+   - 算法：把时间线照片按时间正序排，对每条规则找出**最早一张** `autoTags` 命中触发词的照片，用那张照片的拍摄日期作为里程碑日期、那张照片作为绑定照片、`MilestoneContentAnalyzer.generatedNote` 拼出来的中文作为备注
+   - 已经手动记录过同名里程碑的规则会自动跳过
+   - UI 里建议按分类（活动 / 地点 / 动物 / 美食 / 节日）分 Section 展示，每条都带缩略图——你看到的就是那张证据照片
+   - 点一下 → 跳到 `MilestoneEditView`，**标题 / 日期 / 说明 / 绑定照片** 全都已经填好了，确认就保存
 
 2. **生日照片自动建里程碑（`PhotoImporter.maybeCreateBirthdayMilestone`）**
    - 扫描相册时每张照片走完认人后，检查拍摄日期与女儿生日周年日的差：
@@ -250,11 +253,10 @@ open BabyTimeline.xcodeproj
      - 算好这是第几个生日（用 `Calendar.dateComponents([.year], ...)`）
      - 查 SwiftData 里有没有同标题的 `Milestone`（用 `#Predicate`），没有就新建
      - 把当前这张照片的 `localIdentifier` 绑定过去
-   - 因为 catalog 里的「第一个生日 / 第二个生日 / 第三个生日」**故意**用相同的标题，
-     自动建了之后建议列表里的那条就会被自动去重，不会重复出现
 
 3. **内容感知的照片自动匹配（`MilestoneContentAnalyzer` + `MilestonePhotoMatcher`）**
-   - 关键词不再手工列：`MilestoneContentAnalyzer.inferredKeywords(forTitle:)` 从**标题本身**推：
+   - 这条服务的是**手动新建里程碑**——你自己输标题，App 帮你从时间线挑张最贴切的照片
+   - 关键词不需要手工列：`MilestoneContentAnalyzer.inferredKeywords(forTitle:)` 从**标题本身**推：
      1. 扫 `TagTranslator` 里已翻译的中文 Vision 标签集，标题子串命中的 tag 全加进来
         （标题「第一个生日」直接命中 `"生日"`；「第一次微笑」命中 `"微笑"`）
      2. 查一小张同义词表把标题词根扩展到 Vision 标签
@@ -263,8 +265,6 @@ open BabyTimeline.xcodeproj
    - `MilestonePhotoMatcher.bestMatch(for:in:preferringKeywords:)` 两阶段挑选：
      1. 先只看 `PhotoEntry.autoTags` 命中任一关键词的照片，在子集里按 `|照片日期 − 里程碑日期|` 最小
      2. 没有任何内容命中就退化到全库按日期最近
-   - `MilestoneEditView` 顶部「已自动匹配」旁边会显示"内容匹配「生日蛋糕」· 拍摄于里程碑当天"还是单纯"拍摄于里程碑日期前 3 天"
-   - **手写的自定义标题**（不在 catalog 里的）走同一条推导，不需要回代码里补
 
 4. **根据照片自动生成备注（`MilestoneContentAnalyzer.generatedNote`）**
    - 新建里程碑时，备注区底下有一颗「根据照片生成说明」按钮
@@ -275,8 +275,7 @@ open BabyTimeline.xcodeproj
      - 信息实在不够就只留 `"1 岁 2 个月时拍的。"`
    - 生成的文字会覆盖备注框，用户可以在此基础上继续改
 
-想加更多默认里程碑，直接往 `MilestoneCatalog.all` 数组尾部追加 `Entry(...)` 就行；
-想改模板文案，改同一份数组里的字段就行。**没有任何远程配置，改了之后重装 App 即生效。**
+想加更多自动建议，直接往 `PhotoMilestoneSuggester.rules` 数组尾部追加一条 `Rule(...)` 就行——只要触发词在 `TagTranslator` 里能翻译出来，立刻生效。**没有任何远程配置，改了之后重装 App 即生效。**
 
 ## 隐私
 
@@ -329,9 +328,10 @@ open BabyTimeline.xcodeproj
 3. 单张精修：在照片详情页 → 「…」→ 「从时间线里移除」
 
 **Q: 为什么某些里程碑没有出现在「建议记录」区？**
-- 宝宝月龄还没到那个 `expectedMonths`（比如 18 个月的建议要等到宝宝满 18 个月才会出现）
-- 或者你已经手动记过同名的里程碑了，系统就不会再重复建议
-- 或者 catalog 里还没收录这条 —— 可以在 `BabyTimeline/Services/MilestoneCatalog.swift` 里自己加
+- 时间线里还没有触发词对应的照片（比如 "第一次见到雪" 得等你拍过一张 Vision 能认出 "雪" 的照片）
+- 你已经手动记过同名的里程碑了，系统不再重复建议
+- Vision 虽然拍到了但没把场景识别到对应标签（识别率取决于照片构图，不是每张都能命中）——可以自己手动新建，标题一样会走内容关键词匹配帮你挑照片
+- 规则表里还没收录这条 —— 可以在 `BabyTimeline/Services/PhotoMilestoneSuggester.swift` 的 `rules` 里自己加
 
 **Q: 生日照自动建的里程碑想删掉怎么办？**
 里程碑 Tab → 左滑那一行 → 删除。跟手动建的里程碑没区别，绑定的照片也会随之解绑（但不会动系统相册里的原图）。

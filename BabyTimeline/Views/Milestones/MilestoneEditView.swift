@@ -228,10 +228,16 @@ struct MilestoneEditView: View {
             // 建议日期如果早于生日（不应该发生），压到生日
             date = max(date, baby.birthday)
             note = draft.note
+            // 来自「建议」的草稿已经带了一张证据照片（PhotoMilestoneSuggester
+            // 是从那张照片里抽出来的），直接采用，跳过自动匹配——避免再跑一遍
+            // 反而挑到一张更近但不相关的照片。
+            if let preboundId = draft.linkedAssetLocalId {
+                linkedAssetLocalId = preboundId
+                photoWasUserEdited = true
+                return
+            }
         }
-        // 无论是否有 draft，都根据最终日期重新匹配一次。
-        // ★ 不再依赖 list view 预算的 linkedAssetLocalId，因为那时 photos 可能
-        //   还没加载，或者使用的是 maxDays 限制的旧逻辑，导致结果不准。
+        // 没有预绑定照片：根据日期自动匹配一张
         autoLinkPhotoFromTimeline()
     }
 

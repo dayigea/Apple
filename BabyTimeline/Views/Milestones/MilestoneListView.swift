@@ -3,8 +3,10 @@ import SwiftUI
 
 /// 成长里程碑列表：
 /// - 上半：**已记录** —— 父母手动填过的，按日期升序
-/// - 下半：**建议记录** —— 从 `MilestoneCatalog` 里按宝宝月龄自动挑出的发育阶段提醒，
-///   每条都可以一键转成正式的 `Milestone`
+/// - 下半：**建议记录** —— 由 `PhotoMilestoneSuggester` 直接从时间线照片的内容
+///   推导出来：当某张照片的自动标签里出现 "雪 / 海滩 / 蛋糕 / 狗 …" 等触发词时，
+///   就推荐对应的「第一次见到雪 / 第一次去海边 / 第一次吃蛋糕 / 第一次见到小狗」。
+///   每条建议都已经带上了**那张真实照片**作为日期与封面来源，点一下就能保存。
 struct MilestoneListView: View {
 
     let baby: Baby
@@ -13,7 +15,7 @@ struct MilestoneListView: View {
     @Query(sort: \Milestone.date, order: .forward)
     private var milestones: [Milestone]
 
-    /// 时间线里的所有照片，供「建议 → 自动匹配一张最近的照片」用
+    /// 时间线里的所有照片，建议生成器会从这里抽取「第一次出现 X」的真实证据。
     @Query(sort: \PhotoEntry.creationDate, order: .forward)
     private var photos: [PhotoEntry]
 
@@ -50,10 +52,15 @@ struct MilestoneListView: View {
 
     @ViewBuilder
     private var content: some View {
-        let suggestions = MilestoneSuggester.suggestions(for: baby, existing: milestones)
+        let suggestions = PhotoMilestoneSuggester.suggestions(
+            from: photos,
+            baby: baby,
+            existing: milestones
+        )
+        let grouped = PhotoMilestoneSuggester.grouped(suggestions)
 
         if milestones.isEmpty && suggestions.isEmpty {
-            EmptyMilestoneView { showingNew = true }
+            EmptyMilestoneView(hasPhotos: !photos.isEmpty) { showingNew = true }
         } else {
             List {
                 if !milestones.isEmpty {
@@ -73,25 +80,32 @@ struct MilestoneListView: View {
                 }
 
                 if !suggestions.isEmpty {
-                    Section {
-                        ForEach(suggestions) { suggestion in
-                            Button {
-                                // 照片匹配在 MilestoneEditView.loadInitial 里统一做，
-                                // 避免这里预算 + EditView 再算一次产生两个不同结果
-                                preFilledDraft = MilestoneDraft(
-                                    title: suggestion.entry.title,
-                                    date: suggestion.suggestedDate,
-                                    note: suggestion.entry.detail
-                                )
-                            } label: {
-                                SuggestionRow(baby: baby, suggestion: suggestion)
+                    ForEach(grouped, id: \.category.id) { group in
+                        Section {
+                            ForEach(group.items) { suggestion in
+                                Button {
+                                    preFilledDraft = MilestoneDraft(
+                                        title: suggestion.title,
+                                        date: suggestion.date,
+                                        note: suggestion.note,
+                                        linkedAssetLocalId: suggestion.assetLocalId
+                                    )
+                                } label: {
+                                    SuggestionRow(baby: baby, suggestion: suggestion)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                        } header: {
+                            Text("建议·\(group.category.label)（\(group.items.count)）")
                         }
+                    }
+                } else if !photos.isEmpty {
+                    Section {
+                        Text("时间线里没有触发任何建议——等更多照片入库后再回来看看。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     } header: {
-                        Text("建议记录（按月龄推算）")
-                    } footer: {
-                        Text("根据发育阶段给的提醒，不是固定时间。点一下可以快速添加，App 会预填标题、日期、说明，并从时间线里自动配一张最接近那个日期的照片。")
+                        Text("建议")
                     }
                 }
             }
@@ -114,32 +128,39 @@ struct MilestoneDraft: Identifiable {
     let title: String
     let date: Date
     let note: String
+    /// 来自建议的预绑定照片。从 `PhotoMilestoneSuggester` 来的建议必带；
+    /// 用户从空白新建走过来时为 nil，由 `MilestoneEditView` 自动匹配。
+    let linkedAssetLocalId: String?
 }
 
-// MARK: - 建议行
+// MARK: - 建议行：左边放真实照片缩略图，证明这条建议是有出处的
 
 private struct SuggestionRow: View {
     let baby: Baby
-    let suggestion: MilestoneSuggester.Suggestion
+    let suggestion: PhotoMilestoneSuggester.Suggestion
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 44, height: 44)
-                Image(systemName: suggestion.entry.icon)
-                    .foregroundStyle(.tint)
-            }
+        HStack(alignment: .top, spacing: 12) {
+            AsyncPHAssetImage(localIdentifier: suggestion.assetLocalId, size: .thumbnail(70))
+                .frame(width: 70, height: 70)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: suggestion.icon)
+                        .font(.caption2)
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(Color.accentColor, in: Circle())
+                        .padding(4)
+                }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(suggestion.entry.title)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(suggestion.title)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                Text("约 \(suggestion.entry.expectedMonths) 月龄 · \(Self.dateFormatter.string(from: suggestion.suggestedDate))")
+                Text("\(AgeCalculator.age(birthday: baby.birthday, at: suggestion.date).localized) · \(Self.dateFormatter.string(from: suggestion.date))")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(suggestion.entry.detail)
+                    .foregroundStyle(.tint)
+                Text(suggestion.note)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -157,12 +178,12 @@ private struct SuggestionRow: View {
     private static let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "zh_CN")
-        df.dateFormat = "yyyy 年 M 月"
+        df.dateFormat = "yyyy 年 M 月 d 日"
         return df
     }()
 }
 
-// MARK: - 单行
+// MARK: - 已记录行
 
 private struct MilestoneRow: View {
     let baby: Baby
@@ -218,6 +239,7 @@ private struct MilestoneRow: View {
 // MARK: - 空状态
 
 private struct EmptyMilestoneView: View {
+    let hasPhotos: Bool
     let onAdd: () -> Void
 
     var body: some View {
@@ -225,7 +247,9 @@ private struct EmptyMilestoneView: View {
             Image(systemName: "star.circle")
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
-            Text("还没有记录任何里程碑\n点击下面按钮添加第一个")
+            Text(hasPhotos
+                 ? "还没有记录任何里程碑\n时间线里也还没有触发自动建议"
+                 : "还没有记录任何里程碑\n等时间线里有照片后会自动给出建议")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button(action: onAdd) {
