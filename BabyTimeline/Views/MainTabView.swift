@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// 主界面：三个 Tab — 时间线 / 里程碑 / 设置。
+/// 主界面：四个 Tab — 时间线 / 里程碑 / 成长 / 设置。
 struct MainTabView: View {
 
     let baby: Baby
@@ -16,6 +16,11 @@ struct MainTabView: View {
             MilestoneListView(baby: baby)
                 .tabItem {
                     Label("里程碑", systemImage: "star.circle")
+                }
+
+            GrowthHubView(baby: baby)
+                .tabItem {
+                    Label("成长", systemImage: "chart.xyaxis.line")
                 }
 
             SettingsView(baby: baby)

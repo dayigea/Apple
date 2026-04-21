@@ -13,6 +13,7 @@ struct BabyTimelineApp: App {
                 Baby.self,
                 PhotoEntry.self,
                 Milestone.self,
+                GrowthRecord.self,
             ])
             let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             modelContainer = try ModelContainer(for: schema, configurations: config)
