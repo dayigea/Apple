@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 「成长」Tab 的主页：成长数据 + 时光对比入口。
+/// 「成长」Tab 的主页：成长数据 + 时光对比 + 成长月报入口。
 struct GrowthHubView: View {
 
     let baby: Baby
@@ -28,6 +28,17 @@ struct GrowthHubView: View {
                             color: .blue,
                             title: "时光对比",
                             subtitle: "一年前的今天 vs 现在，看看长了多少"
+                        )
+                    }
+
+                    NavigationLink {
+                        MonthlyReportView(baby: baby)
+                    } label: {
+                        FeatureRow(
+                            icon: "doc.richtext",
+                            color: .orange,
+                            title: "成长月报",
+                            subtitle: "每月自动总结：照片、地点、里程碑、发育数据"
                         )
                     }
                 }
