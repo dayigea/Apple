@@ -1,8 +1,8 @@
 import Foundation
 import SwiftData
 
-/// 每张被纳入时间线的照片，对应系统相册里的一个 PHAsset。
-/// 本地只保存元数据，照片本体始终留在系统相册里，通过 `assetLocalId` 按需读取。
+/// 每条被纳入时间线的媒体（照片或视频），对应系统相册里的一个 PHAsset。
+/// 本地只保存元数据，原始文件始终留在系统相册里，通过 `assetLocalId` 按需读取。
 @Model
 final class PhotoEntry {
     /// PHAsset.localIdentifier，是 App 里照片的唯一标识
@@ -30,6 +30,12 @@ final class PhotoEntry {
     /// 记录入库时间
     var importedAt: Date
 
+    /// 媒体类型：0 = 照片，1 = 视频。默认 0 兼容已有数据。
+    var mediaType: Int
+
+    /// 视频时长（秒），照片为 0。
+    var duration: Double
+
     /// Vision 场景分类自动标签（中文），例如 ["宝宝", "食物", "室内"]
     /// 透明转发到底层的 `autoTagsData`，不被 SwiftData 直接持久化。
     var autoTags: [String] {
@@ -41,6 +47,8 @@ final class PhotoEntry {
         }
     }
 
+    var isVideo: Bool { mediaType == 1 }
+
     init(
         assetLocalId: String,
         creationDate: Date,
@@ -51,7 +59,9 @@ final class PhotoEntry {
         isFavorite: Bool = false,
         faceCount: Int = 0,
         autoTags: [String] = [],
-        importedAt: Date = .now
+        importedAt: Date = .now,
+        mediaType: Int = 0,
+        duration: Double = 0
     ) {
         self.assetLocalId = assetLocalId
         self.creationDate = creationDate
@@ -63,5 +73,7 @@ final class PhotoEntry {
         self.faceCount = faceCount
         self.autoTagsData = (try? JSONEncoder().encode(autoTags)) ?? Data("[]".utf8)
         self.importedAt = importedAt
+        self.mediaType = mediaType
+        self.duration = duration
     }
 }

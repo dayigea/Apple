@@ -119,12 +119,19 @@ private struct CapsuleCard: View {
 
             HStack(spacing: 8) {
                 VStack(spacing: 4) {
-                    AsyncPHAssetImage(
-                        localIdentifier: capsule.oldPhoto.assetLocalId,
-                        size: .thumbnail(200)
-                    )
-                    .frame(height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    ZStack(alignment: .bottomTrailing) {
+                        AsyncPHAssetImage(
+                            localIdentifier: capsule.oldPhoto.assetLocalId,
+                            size: .thumbnail(200)
+                        )
+                        .frame(height: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        if capsule.oldPhoto.isVideo {
+                            VideoDurationBadge(duration: capsule.oldPhoto.duration)
+                                .padding(6)
+                        }
+                    }
 
                     Text(AgeCalculator.age(
                         birthday: baby.birthday,
@@ -143,12 +150,19 @@ private struct CapsuleCard: View {
                     .foregroundStyle(.secondary)
 
                 VStack(spacing: 4) {
-                    AsyncPHAssetImage(
-                        localIdentifier: capsule.newPhoto.assetLocalId,
-                        size: .thumbnail(200)
-                    )
-                    .frame(height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    ZStack(alignment: .bottomTrailing) {
+                        AsyncPHAssetImage(
+                            localIdentifier: capsule.newPhoto.assetLocalId,
+                            size: .thumbnail(200)
+                        )
+                        .frame(height: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        if capsule.newPhoto.isVideo {
+                            VideoDurationBadge(duration: capsule.newPhoto.duration)
+                                .padding(6)
+                        }
+                    }
 
                     Text(AgeCalculator.age(
                         birthday: baby.birthday,

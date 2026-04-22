@@ -144,11 +144,11 @@ private struct EmptyTimelineView: View {
         case .requestingAuth:
             return "正在请求相册权限…"
         case .scanning:
-            return "正在整理相册里的照片…\n只纳入含有人脸的照片"
+            return "正在整理相册里的照片和视频…\n只纳入含有人脸的内容"
         case .finished(let inserted, _):
             return inserted == 0
-                ? "没有找到符合条件的照片\n确认相册里有出生之后、含有人脸的照片"
-                : "已整理 \(inserted) 张照片"
+                ? "没有找到符合条件的照片或视频\n确认相册里有出生之后、含有人脸的内容"
+                : "已整理 \(inserted) 条记录"
         case .failed(let reason):
             return reason
         }

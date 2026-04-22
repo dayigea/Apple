@@ -44,6 +44,7 @@ struct MonthlyReportView: View {
         let month: Int
         let age: AgeCalculator.Age
         let photoCount: Int
+        let videoCount: Int
         let places: [String]
         let milestones: [Milestone]
         let topTags: [String]
@@ -67,7 +68,7 @@ struct MonthlyReportView: View {
 
         while (y > startYear) || (y == startYear && m >= startMonth) {
             let report = buildReport(year: y, month: m)
-            if report.photoCount > 0 || !report.milestones.isEmpty || report.growth != nil {
+            if report.photoCount > 0 || report.videoCount > 0 || !report.milestones.isEmpty || report.growth != nil {
                 result.append(report)
             }
 
@@ -87,7 +88,7 @@ struct MonthlyReportView: View {
               let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) else {
             return Report(id: "\(year)-\(month)", year: year, month: month,
                           age: AgeCalculator.age(birthday: baby.birthday, at: Date.now),
-                          photoCount: 0, places: [], milestones: [],
+                          photoCount: 0, videoCount: 0, places: [], milestones: [],
                           topTags: [], growth: nil, prevGrowth: nil, coverPhotoId: nil)
         }
 
@@ -129,7 +130,8 @@ struct MonthlyReportView: View {
             year: year,
             month: month,
             age: age,
-            photoCount: monthPhotos.count,
+            photoCount: monthPhotos.filter { !$0.isVideo }.count,
+            videoCount: monthPhotos.filter { $0.isVideo }.count,
             places: places,
             milestones: monthMilestones,
             topTags: topTags,
@@ -185,7 +187,12 @@ private struct ReportCard: View {
 
             // 统计摘要
             HStack(spacing: 16) {
-                StatItem(icon: "photo", value: "\(report.photoCount)", label: "张照片")
+                if report.photoCount > 0 {
+                    StatItem(icon: "photo", value: "\(report.photoCount)", label: "张照片")
+                }
+                if report.videoCount > 0 {
+                    StatItem(icon: "video", value: "\(report.videoCount)", label: "段视频")
+                }
                 if !report.places.isEmpty {
                     StatItem(icon: "mappin", value: "\(report.places.count)", label: "个地方")
                 }

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Photos
 import UIKit
@@ -19,14 +20,15 @@ enum PhotoLibraryService {
         }
     }
 
-    // MARK: - 获取照片
+    // MARK: - 获取资源
 
-    /// 拉取指定日期之后的所有图片 PHAsset（升序：老的在前）
+    /// 拉取指定日期之后的所有图片和视频 PHAsset（升序：老的在前）
     static func fetchAssets(after startDate: Date) -> [PHAsset] {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(
-            format: "mediaType == %d AND creationDate >= %@",
+            format: "(mediaType == %d OR mediaType == %d) AND creationDate >= %@",
             PHAssetMediaType.image.rawValue,
+            PHAssetMediaType.video.rawValue,
             startDate as NSDate
         )
         options.sortDescriptors = [
@@ -100,6 +102,58 @@ enum PhotoLibraryService {
             targetSize: PHImageManagerMaximumSize,
             deliveryMode: .highQualityFormat
         )
+    }
+
+    // MARK: - 视频
+
+    /// 从视频 PHAsset 提取一帧封面图用于 Vision 分析（512px）。
+    static func requestVideoAnalysisImage(for asset: PHAsset) async -> CGImage? {
+        guard let avAsset = await requestAVAsset(for: asset) else { return nil }
+        let generator = AVAssetImageGenerator(asset: avAsset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 512, height: 512)
+
+        let time = CMTime(seconds: min(1, avAsset.duration.seconds / 2), preferredTimescale: 600)
+        guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else { return nil }
+        return detachCGImage(cgImage)
+    }
+
+    /// 请求视频的 AVAsset（用于播放或帧提取）。
+    static func requestAVAsset(for asset: PHAsset) async -> AVAsset? {
+        await withCheckedContinuation { continuation in
+            let gate = ContinuationGate()
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .automatic
+
+            PHImageManager.default().requestAVAsset(
+                forVideo: asset,
+                options: options
+            ) { avAsset, _, _ in
+                if gate.open() {
+                    continuation.resume(returning: avAsset)
+                }
+            }
+        }
+    }
+
+    /// 请求视频的 AVPlayerItem（用于 AVPlayer 播放）。
+    static func requestPlayerItem(for asset: PHAsset) async -> AVPlayerItem? {
+        await withCheckedContinuation { continuation in
+            let gate = ContinuationGate()
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .automatic
+
+            PHImageManager.default().requestPlayerItem(
+                forVideo: asset,
+                options: options
+            ) { playerItem, _ in
+                if gate.open() {
+                    continuation.resume(returning: playerItem)
+                }
+            }
+        }
     }
 
     // MARK: - 内部实现

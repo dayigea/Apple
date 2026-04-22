@@ -4,17 +4,17 @@ import Photos
 import SwiftData
 import Vision
 
-/// 从系统相册把照片导入到 SwiftData。
+/// 从系统相册把照片和视频导入到 SwiftData。
 ///
 /// 筛选规则（按顺序）：
-/// 1. PHAsset 是一张图片、`creationDate >= birthday`
-/// 2. 照片里至少有 1 张人脸
+/// 1. PHAsset 是图片或视频、`creationDate >= birthday`
+/// 2. 封面帧里至少有 1 张人脸（视频取第 1 秒帧做检测）
 /// 3. 如果 Baby 设置了「认人参考照」：至少一张人脸与参考指纹距离 ≤ 阈值，
 ///    **并且**比任何一张「排除人脸」都更像女儿；
 ///    否则：只要有人脸就算通过
 /// 4. 通过后：读取 GPS → 反查中文地名 → 场景分类 → 落库
-/// 5. 如果照片的拍摄日期正好落在某个生日周年前后 3 天内 → 自动创建
-///    「N 岁生日」里程碑（如果还没有的话），并把这张照片绑定过去
+/// 5. 如果拍摄日期正好落在某个生日周年前后 3 天内 → 自动创建
+///    「N 岁生日」里程碑（如果还没有的话），并绑定过去
 ///
 /// 重复导入：以 `PHAsset.localIdentifier` 去重。
 @Observable
@@ -78,8 +78,16 @@ final class PhotoImporter {
                 continue
             }
 
-            // 5. 拿 512 分析图
-            guard let cgImage = await PhotoLibraryService.requestAnalysisImage(for: asset) else {
+            let isVideo = asset.mediaType == .video
+
+            // 5. 拿分析用的封面帧（照片用 requestAnalysisImage，视频用 requestVideoAnalysisImage）
+            let cgImage: CGImage?
+            if isVideo {
+                cgImage = await PhotoLibraryService.requestVideoAnalysisImage(for: asset)
+            } else {
+                cgImage = await PhotoLibraryService.requestAnalysisImage(for: asset)
+            }
+            guard let cgImage else {
                 skipped += 1
                 continue
             }
@@ -128,7 +136,9 @@ final class PhotoImporter {
                 longitude: meta.longitude,
                 placeName: placeName,
                 faceCount: faceCount,
-                autoTags: tags
+                autoTags: tags,
+                mediaType: isVideo ? 1 : 0,
+                duration: isVideo ? asset.duration : 0
             )
             context.insert(entry)
             inserted += 1

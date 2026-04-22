@@ -1,11 +1,13 @@
+import AVKit
+import Photos
 import SwiftData
 import SwiftUI
 
-/// 单张照片的详情页：大图 + 年龄 / 日期 / 地点 / 标签 / 备注 / 收藏。
+/// 照片 / 视频的详情页：大图或视频播放器 + 年龄 / 日期 / 地点 / 标签 / 备注 / 收藏。
 ///
 /// 工具栏里右上角是「收藏」，左侧的「…」菜单里提供「从时间线里移除」——
-/// 把这张照片的 `PhotoEntry` 从本地库里删掉，并顺带把所有指向它的
-/// 里程碑 `linkedAssetLocalId` 清空。系统相册里的原图不会动。
+/// 把这条记录的 `PhotoEntry` 从本地库里删掉，并顺带把所有指向它的
+/// 里程碑 `linkedAssetLocalId` 清空。系统相册里的原文件不会动。
 struct PhotoDetailView: View {
 
     let baby: Baby
@@ -19,20 +21,37 @@ struct PhotoDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // 大图
-                AsyncPHAssetImage(
-                    localIdentifier: entry.assetLocalId,
-                    size: .fullSize
-                )
-                .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                // 大图 or 视频播放器
+                if entry.isVideo {
+                    VideoPlayerView(localIdentifier: entry.assetLocalId)
+                        .aspectRatio(16/9, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else {
+                    AsyncPHAssetImage(
+                        localIdentifier: entry.assetLocalId,
+                        size: .fullSize
+                    )
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
 
                 // 核心信息
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(Self.dateFormatter.string(from: entry.creationDate))
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                    HStack(spacing: 6) {
+                        Text(Self.dateFormatter.string(from: entry.creationDate))
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        if entry.isVideo {
+                            Label(Self.formatDuration(entry.duration), systemImage: "video.fill")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(.blue.opacity(0.7), in: Capsule())
+                        }
+                    }
 
                     Text(AgeCalculator.age(birthday: baby.birthday, at: entry.creationDate).localized)
                         .font(.headline)
@@ -70,7 +89,7 @@ struct PhotoDetailView: View {
             .padding(.horizontal)
             .padding(.vertical, 12)
         }
-        .navigationTitle("照片详情")
+        .navigationTitle(entry.isVideo ? "视频详情" : "照片详情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -96,14 +115,14 @@ struct PhotoDetailView: View {
             }
         }
         .confirmationDialog(
-            "把这张照片从时间线里移除？",
+            entry.isVideo ? "把这段视频从时间线里移除？" : "把这张照片从时间线里移除？",
             isPresented: $showingRemoveConfirm,
             titleVisibility: .visible
         ) {
             Button("移除", role: .destructive) { removeFromTimeline() }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("只会从 App 里删掉这条记录，系统相册的原图不会动。绑定这张照片的里程碑会变成「未绑定照片」，但里程碑本身不会被删除。")
+            Text("只会从 App 里删掉这条记录，系统相册的原始文件不会动。绑定的里程碑会变成「未绑定」，但里程碑本身不会被删除。")
         }
         .onDisappear { try? context.save() }
     }
@@ -141,6 +160,61 @@ struct PhotoDetailView: View {
         df.dateFormat = "yyyy 年 M 月 d 日 EEEE"
         return df
     }()
+
+    private static func formatDuration(_ seconds: Double) -> String {
+        let total = Int(seconds)
+        let m = total / 60
+        let s = total % 60
+        return m > 0 ? String(format: "%d:%02d", m, s) : String(format: "0:%02d", s)
+    }
+}
+
+// MARK: - 视频播放器
+
+/// 通过 PHAsset localIdentifier 加载并播放视频。
+private struct VideoPlayerView: View {
+    let localIdentifier: String
+
+    @State private var player: AVPlayer?
+    @State private var isLoading = true
+
+    var body: some View {
+        ZStack {
+            if let player {
+                VideoPlayer(player: player)
+            } else if isLoading {
+                Color(.secondarySystemBackground)
+                    .overlay(ProgressView())
+            } else {
+                Color(.secondarySystemBackground)
+                    .overlay(
+                        Image(systemName: "video.slash")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    )
+            }
+        }
+        .task(id: localIdentifier) {
+            await load()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        guard let asset = PhotoLibraryService.asset(withLocalIdentifier: localIdentifier) else {
+            return
+        }
+        guard let playerItem = await PhotoLibraryService.requestPlayerItem(for: asset) else {
+            return
+        }
+        player = AVPlayer(playerItem: playerItem)
+    }
 }
 
 // MARK: - 简易标签云
