@@ -15,7 +15,11 @@ struct BabyTimelineApp: App {
                 Milestone.self,
                 GrowthRecord.self,
             ])
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            let config = ModelConfiguration(
+                schema: schema,
+                url: AppGroup.sharedStoreURL,
+                cloudKitDatabase: .none
+            )
             modelContainer = try ModelContainer(for: schema, configurations: config)
         } catch {
             fatalError("无法创建 SwiftData 容器：\(error)")

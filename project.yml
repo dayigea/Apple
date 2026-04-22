@@ -52,6 +52,11 @@ targets:
           用来把宝宝的照片保留在相册里，App 不会修改任何已有照片。
         NSLocationWhenInUseUsageDescription: >-
           用来把照片里的 GPS 信息转换成可读的地点名称，便于回忆。
+    entitlements:
+      path: BabyTimeline/BabyTimeline.entitlements
+    dependencies:
+      - target: BabyTimelineWidget
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.babytimeline
@@ -60,6 +65,30 @@ targets:
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  BabyTimelineWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: BabyTimelineWidget
+      # Widget 需要访问主 App 的模型和 AppGroup 常量
+      - path: BabyTimeline/Models
+      - path: BabyTimeline/Services/AppGroup.swift
+    entitlements:
+      path: BabyTimelineWidget/BabyTimelineWidget.entitlements
+    info:
+      properties:
+        CFBundleDisplayName: 时光对比
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.babytimeline.widget
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: WidgetBackground
 
   BabyTimelineTests:
     type: bundle.unit-test
