@@ -16,7 +16,7 @@ import SwiftUI
 /// 自动逻辑就不再干预。
 ///
 /// 备注区的「根据照片生成说明」按钮会调用
-/// `MilestoneContentAnalyzer.generatedNote(for:baby:)`，用已绑定照片的内容标签 +
+/// `NoteGenerator.generate(for:baby:)`，用已绑定照片的内容标签 +
 /// 年龄 + 地点拼一段中文，写回 `note`。
 struct MilestoneEditView: View {
 
@@ -253,7 +253,7 @@ struct MilestoneEditView: View {
     /// 用户可以在此基础上继续编辑；没有绑定照片时按钮不会显示。
     private func generateNoteFromPhoto() {
         guard let photo = linkedPhoto else { return }
-        note = MilestoneContentAnalyzer.generatedNote(for: photo, baby: baby)
+        note = NoteGenerator.generate(for: photo, baby: baby)
     }
 
     private func save() {

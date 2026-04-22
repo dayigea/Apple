@@ -167,7 +167,7 @@ enum PhotoMilestoneSuggester {
     struct Suggestion: Identifiable {
         let rule: Rule
         let photo: PhotoEntry
-        /// 由 `MilestoneContentAnalyzer.generatedNote` 拼出来的中文备注。
+        /// 由 `NoteGenerator.generate` 拼出来的中文备注。
         let note: String
 
         var id: String { rule.title }
@@ -206,7 +206,7 @@ enum PhotoMilestoneSuggester {
                 !rule.triggerTags.isDisjoint(with: entry.autoTags)
             }) else { continue }
 
-            let note = MilestoneContentAnalyzer.generatedNote(for: firstHit, baby: baby)
+            let note = NoteGenerator.generate(for: firstHit, baby: baby)
             result.append(Suggestion(rule: rule, photo: firstHit, note: note))
         }
 
