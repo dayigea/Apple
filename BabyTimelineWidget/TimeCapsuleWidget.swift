@@ -1,6 +1,7 @@
 import Photos
 import SwiftData
 import SwiftUI
+import UIKit
 import WidgetKit
 
 // MARK: - Timeline Entry

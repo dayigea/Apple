@@ -18,7 +18,7 @@ enum NoteGenerator {
         let age = AgeCalculator.age(birthday: baby.birthday, at: photo.creationDate)
         let tags = Set(photo.autoTags)
         let place = photo.placeName?.trimmingCharacters(in: .whitespaces)
-        let hasPlace = place != nil && !place!.isEmpty
+        let hasPlace = !(place?.isEmpty ?? true)
 
         // 1. 尝试场景模板
         if let scene = matchScene(tags: tags, age: age, place: place) {

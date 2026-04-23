@@ -27,11 +27,11 @@ enum ShareCardRenderer {
                 UIColor.systemOrange.withAlphaComponent(0.05).cgColor,
                 UIColor.white.cgColor,
             ]
-            let gradient = CGGradient(
+            guard let gradient = CGGradient(
                 colorsSpace: CGColorSpaceCreateDeviceRGB(),
                 colors: colors as CFArray,
                 locations: [0, 0.4, 1]
-            )!
+            ) else { return }
             ctx.cgContext.drawLinearGradient(
                 gradient,
                 start: CGPoint(x: w / 2, y: 0),
@@ -124,11 +124,11 @@ enum ShareCardRenderer {
                 UIColor.systemTeal.withAlphaComponent(0.06).cgColor,
                 UIColor.white.cgColor,
             ]
-            let gradient = CGGradient(
+            guard let gradient = CGGradient(
                 colorsSpace: CGColorSpaceCreateDeviceRGB(),
                 colors: colors as CFArray,
                 locations: [0, 1]
-            )!
+            ) else { return }
             ctx.cgContext.drawLinearGradient(
                 gradient,
                 start: .zero,
