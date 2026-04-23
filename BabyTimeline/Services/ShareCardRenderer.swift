@@ -303,7 +303,6 @@ enum ShareCardRenderer {
         UIColor.systemGray6.setFill()
         UIBezierPath(roundedRect: rect, cornerRadius: 16).fill()
 
-        let cx = rect.midX
         var y = rect.minY + 24
 
         NSAttributedString(

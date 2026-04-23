@@ -113,7 +113,8 @@ enum PhotoLibraryService {
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 512, height: 512)
 
-        let time = CMTime(seconds: min(1, avAsset.duration.seconds / 2), preferredTimescale: 600)
+        let dur = (try? await avAsset.load(.duration).seconds) ?? 2
+        let time = CMTime(seconds: min(1, dur / 2), preferredTimescale: 600)
         guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else { return nil }
         return detachCGImage(cgImage)
     }
