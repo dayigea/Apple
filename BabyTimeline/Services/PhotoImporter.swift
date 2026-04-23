@@ -18,9 +18,10 @@ import Vision
 ///    「N 岁生日」里程碑
 ///
 /// 性能优化：
-/// - 用 TaskGroup 并发分析（最多 4 路并行），充分利用多核
+/// - 流式 TaskGroup：始终保持 6 个并发分析任务，一个完成立刻补一个，不等批次
+/// - 每张照片有 15 秒超时，iCloud 下载卡住不会阻塞整条流水线
 /// - 地理编码从扫描循环中剥离，扫完后批量补全
-/// - 每批 20 条落盘一次
+/// - 每 20 条落盘一次
 ///
 /// 重复导入：以 `PHAsset.localIdentifier` 去重。
 @Observable
@@ -79,56 +80,77 @@ final class PhotoImporter {
 
         phase = .scanning(processed: 0, total: assets.count)
 
-        // 5. 并发分析 + 入库
-        let concurrency = 4
+        // 5. 流式并发分析 + 入库
+        // 始终保持 maxConcurrency 个分析任务在飞，一个完成立刻补一个，
+        // 不会因为某张 iCloud 照片下载慢而让其它工位空转。
+        let maxConcurrency = 6
         var inserted = 0
         var processed = 0
+        var nextIndex = 0
 
-        // 分批处理，每批 concurrency 张并发
-        for batchStart in stride(from: 0, to: assets.count, by: concurrency) {
-            let batchEnd = min(batchStart + concurrency, assets.count)
-            let batch = Array(assets[batchStart..<batchEnd])
+        let capturedRefs = references
+        let capturedNeg = negativeReferences
+        let capturedThreshold = threshold
 
-            let results = await analyzeBatch(
-                batch,
-                references: references,
-                negativeReferences: negativeReferences,
-                threshold: threshold
-            )
-
-            for result in results {
-                guard let result else {
-                    processed += 1
-                    phase = .scanning(processed: processed, total: assets.count)
-                    continue
+        await withTaskGroup(of: AnalysisResult?.self) { group in
+            // 播种：先塞满工位
+            while nextIndex < assets.count, nextIndex < maxConcurrency {
+                let asset = assets[nextIndex]
+                nextIndex += 1
+                group.addTask { [self] in
+                    await self.analyzeOneWithTimeout(
+                        asset,
+                        references: capturedRefs,
+                        negativeReferences: capturedNeg,
+                        threshold: capturedThreshold
+                    )
                 }
-
-                let entry = PhotoEntry(
-                    assetLocalId: result.assetLocalId,
-                    creationDate: result.creationDate,
-                    latitude: result.latitude,
-                    longitude: result.longitude,
-                    faceCount: result.faceCount,
-                    autoTags: result.tags,
-                    mediaType: result.mediaType,
-                    duration: result.duration
-                )
-                context.insert(entry)
-                inserted += 1
-
-                Self.maybeCreateBirthdayMilestone(
-                    photoAssetLocalId: result.assetLocalId,
-                    photoDate: result.creationDate,
-                    baby: baby,
-                    context: context
-                )
-
-                processed += 1
-                phase = .scanning(processed: processed, total: assets.count)
             }
 
-            if inserted % 20 < concurrency {
-                try? context.save()
+            // 流式消费：每完成一个，立刻补一个新任务
+            for await result in group {
+                processed += 1
+                phase = .scanning(processed: processed, total: assets.count)
+
+                if let result {
+                    let entry = PhotoEntry(
+                        assetLocalId: result.assetLocalId,
+                        creationDate: result.creationDate,
+                        latitude: result.latitude,
+                        longitude: result.longitude,
+                        faceCount: result.faceCount,
+                        autoTags: result.tags,
+                        mediaType: result.mediaType,
+                        duration: result.duration
+                    )
+                    context.insert(entry)
+                    inserted += 1
+
+                    Self.maybeCreateBirthdayMilestone(
+                        photoAssetLocalId: result.assetLocalId,
+                        photoDate: result.creationDate,
+                        baby: baby,
+                        context: context
+                    )
+
+                    if inserted % 20 == 0 {
+                        try? context.save()
+                    }
+                }
+
+                // 补一个新任务进去
+                if nextIndex < assets.count {
+                    let asset = assets[nextIndex]
+                    nextIndex += 1
+                    group.addTask { [self] in
+                        await self.analyzeOneWithTimeout(
+                            asset,
+                            references: capturedRefs,
+                            negativeReferences: capturedNeg,
+                            threshold: capturedThreshold
+                        )
+                    }
+                }
             }
         }
 
@@ -153,30 +175,29 @@ final class PhotoImporter {
         let duration: Double
     }
 
-    private nonisolated func analyzeBatch(
-        _ assets: [PHAsset],
+    /// 带超时的单张分析：超过 15 秒自动放弃，防止 iCloud 下载卡死流水线。
+    private nonisolated func analyzeOneWithTimeout(
+        _ asset: PHAsset,
         references: [VNFeaturePrintObservation],
         negativeReferences: [VNFeaturePrintObservation],
         threshold: Float
-    ) async -> [AnalysisResult?] {
-        await withTaskGroup(of: (Int, AnalysisResult?).self) { group in
-            for (i, asset) in assets.enumerated() {
-                group.addTask {
-                    let result = await self.analyzeOne(
-                        asset,
-                        references: references,
-                        negativeReferences: negativeReferences,
-                        threshold: threshold
-                    )
-                    return (i, result)
-                }
+    ) async -> AnalysisResult? {
+        await withTaskGroup(of: AnalysisResult?.self) { group in
+            group.addTask {
+                await self.analyzeOne(
+                    asset,
+                    references: references,
+                    negativeReferences: negativeReferences,
+                    threshold: threshold
+                )
             }
-
-            var results = Array<AnalysisResult?>(repeating: nil, count: assets.count)
-            for await (index, result) in group {
-                results[index] = result
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                return nil
             }
-            return results
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 
