@@ -115,6 +115,14 @@ private struct EmptyTimelineView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if case .geocoding(let processed, let total) = phase {
+                ProgressView(value: Double(processed), total: Double(max(total, 1)))
+                    .frame(maxWidth: 240)
+                Text("正在补全地点信息 \(processed) / \(total)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             if showStartButton {
                 Button(action: onStart) {
                     Text("开始扫描相册")
@@ -132,7 +140,7 @@ private struct EmptyTimelineView: View {
         switch phase {
         case .idle, .finished, .failed:
             return true
-        case .requestingAuth, .scanning:
+        case .requestingAuth, .scanning, .geocoding:
             return false
         }
     }
@@ -145,6 +153,8 @@ private struct EmptyTimelineView: View {
             return "正在请求相册权限…"
         case .scanning:
             return "正在整理相册里的照片和视频…\n只纳入含有人脸的内容"
+        case .geocoding:
+            return "正在补全地点信息…"
         case .finished(let inserted, _):
             return inserted == 0
                 ? "没有找到符合条件的照片或视频\n确认相册里有出生之后、含有人脸的内容"
@@ -164,7 +174,7 @@ private struct ImportStatusButton: View {
     var body: some View {
         Button(action: action) {
             switch phase {
-            case .scanning:
+            case .scanning, .geocoding:
                 ProgressView()
             default:
                 Image(systemName: "arrow.clockwise")
@@ -175,6 +185,7 @@ private struct ImportStatusButton: View {
 
     private var isRunning: Bool {
         if case .scanning = phase { return true }
+        if case .geocoding = phase { return true }
         if case .requestingAuth = phase { return true }
         return false
     }
