@@ -41,6 +41,17 @@ struct GrowthHubView: View {
                             subtitle: "每月自动总结：照片、地点、里程碑、发育数据"
                         )
                     }
+
+                    NavigationLink {
+                        ReportExportView(baby: baby)
+                    } label: {
+                        FeatureRow(
+                            icon: "square.and.arrow.up",
+                            color: .red,
+                            title: "导出报告",
+                            subtitle: "生成 PDF 成长报告或分享卡片"
+                        )
+                    }
                 }
             }
             .listStyle(.insetGrouped)
