@@ -72,8 +72,8 @@ struct TimeCapsuleProvider: TimelineProvider {
             }
             if targetDate < baby.birthday { continue }
 
-            guard let oldPhoto = closest(to: targetDate, in: photos, within: 7),
-                  let newPhoto = closest(to: now, in: photos, within: 7),
+            guard let oldPhoto = closest(to: targetDate, in: photos, within: 30),
+                  let newPhoto = photos.last,
                   oldPhoto.assetLocalId != newPhoto.assetLocalId else {
                 continue
             }

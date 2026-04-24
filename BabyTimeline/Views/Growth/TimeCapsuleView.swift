@@ -42,18 +42,17 @@ struct TimeCapsuleView: View {
         let now = Date.now
         var result: [Capsule] = []
 
+        // "新照片"直接取时间线里最近的一张
+        guard let newPhoto = allPhotos.last else { return [] }
+
         // 尝试若干个时间跨度：6个月、1年、1.5年、2年、3年
         let spans = [6, 12, 18, 24, 36]
         for months in spans {
             guard let targetDate = calendar.date(byAdding: .month, value: -months, to: now) else { continue }
-            // 目标日期必须在生日之后
             if targetDate < baby.birthday { continue }
 
-            // 找目标日期附近 ±7 天内最近的照片
-            guard let oldPhoto = closestPhoto(to: targetDate, within: 7) else { continue }
-            // 找今天附近 ±7 天内最近的照片
-            guard let newPhoto = closestPhoto(to: now, within: 7) else { continue }
-            // 不能是同一张
+            // 在目标日期 ±30 天内找最近的照片
+            guard let oldPhoto = closestPhoto(to: targetDate, within: 30) else { continue }
             if oldPhoto.assetLocalId == newPhoto.assetLocalId { continue }
 
             let label: String
