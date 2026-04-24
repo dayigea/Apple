@@ -43,6 +43,17 @@ struct GrowthHubView: View {
                     }
 
                     NavigationLink {
+                        FoodGuideView(baby: baby)
+                    } label: {
+                        FeatureRow(
+                            icon: "fork.knife.circle",
+                            color: .green,
+                            title: "辅食指南",
+                            subtitle: "按月龄查看适合的肉类、面食、蔬菜和搭配建议"
+                        )
+                    }
+
+                    NavigationLink {
                         ReportExportView(baby: baby)
                     } label: {
                         FeatureRow(
