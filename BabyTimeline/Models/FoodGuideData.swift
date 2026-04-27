@@ -18,6 +18,43 @@ struct FoodStage: Identifiable {
     let pairings: [MealPairing]
     let avoid: [String]
     let tips: [String]
+    let weeklyPlan: WeeklyMealPlan?
+
+    init(
+        id: String,
+        monthRange: String,
+        title: String,
+        subtitle: String,
+        icon: String,
+        texture: String,
+        feedingFrequency: String,
+        dailyMilk: String,
+        meats: [FoodItem],
+        staples: [FoodItem],
+        vegetables: [FoodItem],
+        fruits: [FoodItem],
+        pairings: [MealPairing],
+        avoid: [String],
+        tips: [String],
+        weeklyPlan: WeeklyMealPlan? = nil
+    ) {
+        self.id = id
+        self.monthRange = monthRange
+        self.title = title
+        self.subtitle = subtitle
+        self.icon = icon
+        self.texture = texture
+        self.feedingFrequency = feedingFrequency
+        self.dailyMilk = dailyMilk
+        self.meats = meats
+        self.staples = staples
+        self.vegetables = vegetables
+        self.fruits = fruits
+        self.pairings = pairings
+        self.avoid = avoid
+        self.tips = tips
+        self.weeklyPlan = weeklyPlan
+    }
 }
 
 struct FoodItem: Identifiable {
@@ -34,6 +71,21 @@ struct MealPairing: Identifiable {
     let note: String
 }
 
+struct DailyMealPlan: Identifiable {
+    let id = UUID()
+    let day: String
+    let breakfast: String
+    let morningSnack: String
+    let lunch: String
+    let afternoonSnack: String
+    let dinner: String
+}
+
+struct WeeklyMealPlan {
+    let summary: String
+    let days: [DailyMealPlan]
+}
+
 // MARK: - 全量数据
 
 enum FoodGuideData {
@@ -43,7 +95,8 @@ enum FoodGuideData {
         stage7to8,
         stage9to10,
         stage11to12,
-        stage13to18,
+        stage13to15,
+        stage16to18,
         stage19to24,
     ]
 
@@ -331,73 +384,151 @@ enum FoodGuideData {
         ]
     )
 
-    // MARK: - 13–18 月龄
+    // MARK: - 13–15 月龄
 
-    private static let stage13to18 = FoodStage(
-        id: "13-18",
-        monthRange: "13–18 月龄",
-        title: "幼儿饮食",
-        subtitle: "与家庭饮食接轨，五大类全覆盖",
-        icon: "person.circle.fill",
-        texture: "小块/条状/片状，可咬可嚼",
+    private static let stage13to15 = FoodStage(
+        id: "13-15",
+        monthRange: "13–15 月龄",
+        title: "家庭饮食过渡",
+        subtitle: "刚满一岁，向家庭餐过渡，仍需软烂",
+        icon: "house.fill",
+        texture: "小块/小段，软烂为主，便于咀嚼",
         feedingFrequency: "三餐两点（3正餐 + 2加餐）",
-        dailyMilk: "400–500 mL",
+        dailyMilk: "400–500 mL（可引入全脂纯牛奶）",
         meats: [
-            FoodItem(name: "各种红肉", detail: "猪牛羊，切丝切丁", icon: "🥩"),
-            FoodItem(name: "禽肉", detail: "鸡鸭，去皮切小块", icon: "🍗"),
-            FoodItem(name: "鱼虾", detail: "每周2–3次鱼，补DHA", icon: "🐟"),
-            FoodItem(name: "鸡蛋", detail: "每天1个", icon: "🥚"),
+            FoodItem(name: "猪牛羊肉", detail: "切小丁或剁碎，炖煮至软", icon: "🥩"),
+            FoodItem(name: "鸡鸭肉", detail: "去皮去骨，切小块", icon: "🍗"),
+            FoodItem(name: "鱼类", detail: "每周2–3次，仔细去刺", icon: "🐟"),
+            FoodItem(name: "虾仁", detail: "去虾线切碎或剁泥", icon: "🦐"),
+            FoodItem(name: "鸡蛋", detail: "每天1个，蒸/煮/炒均可", icon: "🥚"),
         ],
         staples: [
-            FoodItem(name: "米饭", detail: "正常软硬度", icon: "🍚"),
-            FoodItem(name: "面条/面片", detail: "各种形状都可以", icon: "🍜"),
-            FoodItem(name: "馒头/花卷", detail: "主食轮换", icon: "🫓"),
-            FoodItem(name: "红薯/土豆", detail: "可部分替代主食", icon: "🍠"),
-            FoodItem(name: "燕麦", detail: "全谷物，膳食纤维", icon: "🌾"),
+            FoodItem(name: "软米饭", detail: "比成人软一些", icon: "🍚"),
+            FoodItem(name: "面条/面片", detail: "煮软切短", icon: "🍜"),
+            FoodItem(name: "小馒头/花卷", detail: "撕成小块", icon: "🫓"),
+            FoodItem(name: "红薯/土豆", detail: "蒸熟压泥或切丁", icon: "🍠"),
+            FoodItem(name: "燕麦粥", detail: "煮稠加奶或水果", icon: "🌾"),
         ],
         vegetables: [
-            FoodItem(name: "深色蔬菜", detail: "菠菜、西兰花、胡萝卜等", icon: "🥦"),
-            FoodItem(name: "浅色蔬菜", detail: "白菜、冬瓜、莲藕等", icon: "🥬"),
-            FoodItem(name: "菌菇类", detail: "香菇、金针菇（切碎）", icon: "🍄"),
-            FoodItem(name: "豆制品", detail: "豆腐、豆干", icon: "🧈"),
+            FoodItem(name: "深色蔬菜", detail: "菠菜、西兰花、胡萝卜（切碎）", icon: "🥦"),
+            FoodItem(name: "浅色蔬菜", detail: "白菜、冬瓜、莲藕（切丁煮软）", icon: "🥬"),
+            FoodItem(name: "菌菇类", detail: "香菇、平菇切碎", icon: "🍄"),
+            FoodItem(name: "豆制品", detail: "嫩豆腐、内酯豆腐", icon: "🧈"),
         ],
         fruits: [
-            FoodItem(name: "各类应季水果", detail: "每天1–2种", icon: "🍎"),
+            FoodItem(name: "各类应季水果", detail: "切小丁，每天1–2种", icon: "🍎"),
+            FoodItem(name: "蓝莓/草莓", detail: "对半切，富含花青素", icon: "🫐"),
         ],
         pairings: [
             MealPairing(
-                title: "西红柿鸡蛋面",
-                ingredients: ["西红柿", "鸡蛋", "面条", "少许植物油"],
-                note: "家常经典，简单营养全"
+                title: "西红柿鸡蛋软面",
+                ingredients: ["西红柿丁", "鸡蛋", "细面条"],
+                note: "经典开胃面，番茄维C促进铁吸收"
             ),
             MealPairing(
-                title: "胡萝卜玉米排骨粥",
-                ingredients: ["排骨", "胡萝卜", "甜玉米", "大米"],
-                note: "补钙补铁，一锅搞定"
+                title: "三文鱼蔬菜软饭",
+                ingredients: ["三文鱼碎", "西兰花碎", "胡萝卜丁", "软米饭"],
+                note: "DHA + 维C + 维A，营养均衡"
             ),
             MealPairing(
                 title: "牛肉土豆焖饭",
-                ingredients: ["牛肉丁", "土豆丁", "胡萝卜丁", "米饭"],
-                note: "铁+碳水+维A，省时省力"
+                ingredients: ["牛肉碎", "土豆丁", "胡萝卜丁", "米饭"],
+                note: "补铁补能量，省时一锅出"
             ),
             MealPairing(
-                title: "蒸鱼配彩蔬",
-                ingredients: ["鲈鱼/鳕鱼", "西兰花", "胡萝卜", "土豆"],
-                note: "清蒸最大程度保留营养"
+                title: "鸡肉香菇粥",
+                ingredients: ["鸡肉碎", "香菇碎", "大米"],
+                note: "天然鲜味，少调味也好吃"
             ),
         ],
         avoid: [
             "整颗坚果（3岁前须磨碎或做酱）",
-            "含糖饮料",
+            "整颗葡萄/小番茄（必须切4瓣）",
+            "含糖饮料、果汁",
             "高盐高糖零食（薯片、饼干等）",
             "每日盐 < 1.5g",
         ],
         tips: [
-            "这个阶段容易挑食——反复提供被拒食物（可能需10–15次才接受）",
-            "不要用食物作为奖惩工具",
-            "每餐控制在20–30分钟内",
-            "每日谷薯75–100g、蔬菜100–150g、水果100–150g",
-        ]
+            "1岁后可引入全脂纯牛奶（每日 ≤ 500 mL）",
+            "完全停用奶瓶，过渡到吸管杯/敞口杯",
+            "每日：肉鱼虾 50–75g、蔬菜 100–150g、水果 100–150g",
+            "每餐 20–30 分钟，吃完就撤盘",
+        ],
+        weeklyPlan: weeklyPlan13to15
+    )
+
+    // MARK: - 16–18 月龄
+
+    private static let stage16to18 = FoodStage(
+        id: "16-18",
+        monthRange: "16–18 月龄",
+        title: "自主进食萌芽",
+        subtitle: "咀嚼成熟，鼓励自己用勺、自己吃",
+        icon: "hand.raised.fill",
+        texture: "接近家人饭菜，切小切短",
+        feedingFrequency: "三餐两点，与家人同桌",
+        dailyMilk: "400–500 mL",
+        meats: [
+            FoodItem(name: "红肉", detail: "猪牛羊切丝/小块", icon: "🥩"),
+            FoodItem(name: "禽肉", detail: "鸡腿肉、鸡胸肉撕条", icon: "🍗"),
+            FoodItem(name: "鱼虾", detail: "每周2–3次鱼，补DHA", icon: "🐟"),
+            FoodItem(name: "鸡蛋", detail: "每天1个，多种做法", icon: "🥚"),
+            FoodItem(name: "动物肝脏", detail: "每周1次，补铁补维A", icon: "🫀"),
+        ],
+        staples: [
+            FoodItem(name: "米饭", detail: "正常软硬度", icon: "🍚"),
+            FoodItem(name: "意面/面条", detail: "各种形状切短", icon: "🍝"),
+            FoodItem(name: "馒头/包子", detail: "自制低盐馅", icon: "🫓"),
+            FoodItem(name: "红薯/玉米", detail: "粗细搭配，膳食纤维", icon: "🌽"),
+            FoodItem(name: "全麦面包", detail: "选低糖低盐款", icon: "🍞"),
+        ],
+        vegetables: [
+            FoodItem(name: "深色蔬菜", detail: "占蔬菜量的一半以上", icon: "🥦"),
+            FoodItem(name: "根茎类", detail: "莲藕、山药、芋头", icon: "🥔"),
+            FoodItem(name: "菌菇豆制品", detail: "香菇、豆腐、豆干", icon: "🍄"),
+            FoodItem(name: "海带紫菜", detail: "切碎，补碘", icon: "🌿"),
+        ],
+        fruits: [
+            FoodItem(name: "应季水果", detail: "每天1–2种，注意切小", icon: "🍎"),
+            FoodItem(name: "酸奶配水果", detail: "无糖酸奶+果丁，加餐首选", icon: "🥣"),
+        ],
+        pairings: [
+            MealPairing(
+                title: "西红柿牛肉意面",
+                ingredients: ["牛肉丝", "西红柿", "短意面"],
+                note: "锻炼用叉子的好选择"
+            ),
+            MealPairing(
+                title: "蒸鱼配彩蔬米饭",
+                ingredients: ["鲈鱼/鳕鱼", "西兰花", "胡萝卜", "米饭"],
+                note: "清蒸保留营养，去刺再上桌"
+            ),
+            MealPairing(
+                title: "胡萝卜玉米排骨粥",
+                ingredients: ["排骨", "胡萝卜", "甜玉米", "大米"],
+                note: "炖煮 1 小时，骨汤补钙"
+            ),
+            MealPairing(
+                title: "什锦鸡肉菜饭",
+                ingredients: ["鸡腿肉", "香菇", "胡萝卜", "豌豆", "米饭"],
+                note: "一锅炖，蛋白质蔬菜碳水齐全"
+            ),
+        ],
+        avoid: [
+            "整颗坚果（3岁前仍须磨碎）",
+            "含糖饮料、含咖啡因饮品",
+            "腌制、烟熏、加工肉类（火腿肠等）",
+            "高汞鱼（旗鱼、鲨鱼、方头鱼）",
+            "每日盐 < 1.5g",
+        ],
+        tips: [
+            "挑食高发期——被拒食物可能要提供 10–15 次才接受",
+            "鼓励自己用勺/叉，允许吃得脏乱",
+            "不用食物当奖惩，不追着喂",
+            "进餐时不看电视/手机，专心吃饭",
+            "每日：肉鱼虾 50–75g、蔬菜 100–150g、水果 100–150g",
+        ],
+        weeklyPlan: weeklyPlan16to18
     )
 
     // MARK: - 19–24 月龄
@@ -463,6 +594,134 @@ enum FoodGuideData {
             "2岁后可过渡到低脂牛奶（有肥胖倾向时）",
             "不看电视/手机进餐",
             "每日蔬菜150–200g、水果100–150g、肉鱼虾50–75g",
+        ]
+    )
+
+    // MARK: - 一周食谱：13–15 月龄
+
+    private static let weeklyPlan13to15 = WeeklyMealPlan(
+        summary: "刚过一岁，主食仍偏软，肉切碎或剁泥。每日总奶量 400–500 mL，可分配在加餐和睡前。",
+        days: [
+            DailyMealPlan(
+                day: "周一",
+                breakfast: "燕麦粥 + 半个蒸蛋 + 蓝莓数颗",
+                morningSnack: "全脂牛奶 150 mL + 香蕉半根",
+                lunch: "西红柿鸡蛋软面 + 西兰花碎",
+                afternoonSnack: "无糖酸奶 + 苹果丁",
+                dinner: "鸡肉香菇软米饭 + 胡萝卜丁"
+            ),
+            DailyMealPlan(
+                day: "周二",
+                breakfast: "小米粥 + 馒头小块 + 牛油果泥",
+                morningSnack: "全脂牛奶 150 mL",
+                lunch: "三文鱼碎软饭 + 蒸南瓜",
+                afternoonSnack: "蒸红薯 + 梨丁",
+                dinner: "牛肉土豆焖饭（碎丁版）"
+            ),
+            DailyMealPlan(
+                day: "周三",
+                breakfast: "南瓜小米粥 + 蒸蛋 + 草莓",
+                morningSnack: "全脂牛奶 150 mL + 全麦面包小块",
+                lunch: "番茄牛肉软面 + 菠菜碎",
+                afternoonSnack: "无糖酸奶 + 蓝莓",
+                dinner: "鳕鱼蔬菜粥 + 豆腐丁"
+            ),
+            DailyMealPlan(
+                day: "周四",
+                breakfast: "燕麦+牛奶+香蕉泥 + 蒸蛋",
+                morningSnack: "苹果丁 + 米饼",
+                lunch: "猪肉冬瓜软饭 + 蘑菇碎",
+                afternoonSnack: "全脂牛奶 150 mL",
+                dinner: "虾仁碎蛋羹 + 软饭 + 西兰花"
+            ),
+            DailyMealPlan(
+                day: "周五",
+                breakfast: "红薯小米粥 + 半个蒸蛋",
+                morningSnack: "全脂牛奶 150 mL + 蒸南瓜",
+                lunch: "鸡肉胡萝卜软饭 + 嫩豆腐",
+                afternoonSnack: "无糖酸奶 + 火龙果丁",
+                dinner: "番茄鸡蛋软面 + 菠菜碎"
+            ),
+            DailyMealPlan(
+                day: "周六",
+                breakfast: "牛奶燕麦糊 + 蓝莓 + 蒸蛋",
+                morningSnack: "梨丁 + 米饼",
+                lunch: "三文鱼蔬菜软饭（西兰花+胡萝卜）",
+                afternoonSnack: "全脂牛奶 150 mL",
+                dinner: "猪肝菠菜软面（每周1次）+ 豆腐"
+            ),
+            DailyMealPlan(
+                day: "周日",
+                breakfast: "南瓜粥 + 馒头片 + 香蕉",
+                morningSnack: "无糖酸奶 + 苹果丁",
+                lunch: "牛肉番茄烩饭 + 西兰花碎",
+                afternoonSnack: "全脂牛奶 150 mL + 蒸红薯",
+                dinner: "鸡肉蘑菇软饭 + 冬瓜丁"
+            ),
+        ]
+    )
+
+    // MARK: - 一周食谱：16–18 月龄
+
+    private static let weeklyPlan16to18 = WeeklyMealPlan(
+        summary: "咀嚼能力成熟，可与家人吃同样的菜（减盐版）。鼓励自己用勺、自己拿手指食物。",
+        days: [
+            DailyMealPlan(
+                day: "周一",
+                breakfast: "牛奶 + 全麦面包 + 蒸蛋 + 蓝莓",
+                morningSnack: "苹果丁 + 原味米饼",
+                lunch: "西红柿牛肉短意面 + 西兰花",
+                afternoonSnack: "无糖酸奶 + 草莓",
+                dinner: "蒸鳕鱼 + 米饭 + 胡萝卜玉米"
+            ),
+            DailyMealPlan(
+                day: "周二",
+                breakfast: "小米南瓜粥 + 包子（自制低盐）",
+                morningSnack: "牛奶 + 香蕉",
+                lunch: "鸡腿肉香菇焖饭 + 油菜",
+                afternoonSnack: "蒸红薯 + 梨丁",
+                dinner: "番茄鸡蛋面 + 嫩豆腐"
+            ),
+            DailyMealPlan(
+                day: "周三",
+                breakfast: "燕麦牛奶粥 + 蒸蛋 + 牛油果",
+                morningSnack: "无糖酸奶 + 蓝莓",
+                lunch: "排骨胡萝卜玉米粥 + 紫菜蛋花",
+                afternoonSnack: "全麦面包 + 牛奶",
+                dinner: "三文鱼炒饭（鸡蛋+青豆+胡萝卜）"
+            ),
+            DailyMealPlan(
+                day: "周四",
+                breakfast: "馒头 + 蒸蛋 + 牛奶 + 草莓",
+                morningSnack: "苹果丁 + 米饼",
+                lunch: "牛肉土豆咖喱饭（无添加儿童咖喱）+ 西兰花",
+                afternoonSnack: "无糖酸奶 + 猕猴桃丁",
+                dinner: "虾仁蔬菜小馄饨 + 紫菜汤"
+            ),
+            DailyMealPlan(
+                day: "周五",
+                breakfast: "红薯小米粥 + 蒸蛋 + 蓝莓",
+                morningSnack: "牛奶 + 香蕉",
+                lunch: "鸡肉蘑菇饭 + 莲藕排骨汤",
+                afternoonSnack: "蒸玉米 + 火龙果",
+                dinner: "猪肝菠菜面（每周1次）+ 豆腐"
+            ),
+            DailyMealPlan(
+                day: "周六",
+                breakfast: "牛奶燕麦 + 全麦面包 + 蒸蛋",
+                morningSnack: "无糖酸奶 + 草莓",
+                lunch: "什锦鸡肉菜饭（鸡腿+香菇+豌豆+胡萝卜）",
+                afternoonSnack: "苹果丁 + 米饼",
+                dinner: "鲈鱼蒸豆腐 + 米饭 + 西兰花"
+            ),
+            DailyMealPlan(
+                day: "周日",
+                breakfast: "南瓜粥 + 包子 + 牛奶",
+                morningSnack: "梨丁 + 全麦饼干",
+                lunch: "牛肉番茄意面 + 紫菜蛋花汤",
+                afternoonSnack: "无糖酸奶 + 蓝莓",
+                dinner: "虾仁蛋炒饭 + 油菜 + 山药排骨汤"
+            ),
         ]
     )
 }
