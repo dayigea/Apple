@@ -12,6 +12,7 @@ struct FoodStageDetailView: View {
                 categoryPicker
                 categoryContent
                 pairingsSection
+                weeklyPlanSection
                 avoidSection
                 tipsSection
             }
@@ -20,6 +21,51 @@ struct FoodStageDetailView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(stage.monthRange)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // MARK: - Weekly Plan
+
+    @ViewBuilder
+    private var weeklyPlanSection: some View {
+        if let plan = stage.weeklyPlan {
+            VStack(alignment: .leading, spacing: 10) {
+                sectionHeader(icon: "calendar", title: "一周食谱", color: .orange)
+                NavigationLink {
+                    WeeklyMealPlanView(stageTitle: "\(stage.monthRange) · \(stage.title)", plan: plan)
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(.orange.opacity(0.12))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.title3)
+                                .foregroundStyle(.orange)
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("查看 7 天食谱")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+                            Text(plan.summary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(12)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 20)
+        }
     }
 
     // MARK: - Header
