@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftData
 import SwiftUI
+import WidgetKit
 
 /// 首次启动引导：让用户填写宝宝的基础信息。
 struct SetupView: View {
@@ -99,6 +100,7 @@ struct SetupView: View {
         do {
             context.insert(baby)
             try context.save()
+            WidgetCenter.shared.reloadAllTimelines()
         } catch {
             // 把错误显示出来，不要静默崩溃
             isSaving = false

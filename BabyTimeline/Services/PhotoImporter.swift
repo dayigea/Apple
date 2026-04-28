@@ -3,6 +3,7 @@ import Observation
 import Photos
 import SwiftData
 import Vision
+import WidgetKit
 
 /// 从系统相册把照片和视频导入到 SwiftData。
 ///
@@ -155,6 +156,7 @@ final class PhotoImporter {
         }
 
         try? context.save()
+        WidgetCenter.shared.reloadAllTimelines()
 
         // 6. 批量补全地理编码（不阻塞主流程，后台异步）
         await geocodePending(context: context)

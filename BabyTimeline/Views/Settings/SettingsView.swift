@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftData
 import SwiftUI
+import WidgetKit
 
 /// 设置页：
 /// - 查看/修改宝宝资料
@@ -118,9 +119,9 @@ struct SettingsView: View {
             .onChange(of: avatarItem) {
                 Task { await loadAvatar() }
             }
-            .onChange(of: baby.name) { try? context.save() }
-            .onChange(of: baby.birthday) { try? context.save() }
-            .onChange(of: baby.gender) { try? context.save() }
+            .onChange(of: baby.name) { saveAndReloadWidget() }
+            .onChange(of: baby.birthday) { saveAndReloadWidget() }
+            .onChange(of: baby.gender) { saveAndReloadWidget() }
             .confirmationDialog(
                 "确定清空所有时间线记录吗？",
                 isPresented: $showingDeleteConfirm,
@@ -159,6 +160,11 @@ struct SettingsView: View {
         default:
             return nil
         }
+    }
+
+    private func saveAndReloadWidget() {
+        try? context.save()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func loadAvatar() async {

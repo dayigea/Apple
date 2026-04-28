@@ -1,8 +1,11 @@
+import OSLog
 import Photos
 import SwiftData
 import SwiftUI
 import UIKit
 import WidgetKit
+
+private let widgetLog = Logger(subsystem: "com.personal.babytimeline", category: "Widget")
 
 // MARK: - Timeline Entry
 
@@ -107,26 +110,34 @@ struct TimeCapsuleProvider: TimelineProvider {
     // MARK: - SwiftData
 
     private func loadData() -> (Baby, [PhotoEntry])? {
+        let storeURL = AppGroup.sharedStoreURL
+        widgetLog.info("Widget loadData — sharedContainer=\(AppGroup.isUsingSharedContainer, privacy: .public) store=\(storeURL.path, privacy: .public) exists=\(FileManager.default.fileExists(atPath: storeURL.path), privacy: .public)")
+
         do {
             let schema = Schema([Baby.self, PhotoEntry.self, Milestone.self, GrowthRecord.self])
             let config = ModelConfiguration(
                 schema: schema,
-                url: AppGroup.sharedStoreURL,
+                url: storeURL,
                 cloudKitDatabase: .none
             )
             let container = try ModelContainer(for: schema, configurations: config)
             let context = ModelContext(container)
 
             let babies = try context.fetch(FetchDescriptor<Baby>())
-            guard let baby = babies.first else { return nil }
-
             let photos = try context.fetch(
                 FetchDescriptor<PhotoEntry>(sortBy: [SortDescriptor(\.creationDate)])
             )
+            widgetLog.info("Widget fetched: babies=\(babies.count, privacy: .public) photos=\(photos.count, privacy: .public)")
+
+            guard let baby = babies.first else {
+                widgetLog.notice("Widget: no Baby found in store. 如果 App 里已经设置过宝宝信息，多半是 App Group 没生效——Widget 在读自己 extension 的空数据库。")
+                return nil
+            }
             guard !photos.isEmpty else { return nil }
 
             return (baby, photos)
         } catch {
+            widgetLog.error("Widget loadData failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
