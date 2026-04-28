@@ -1,190 +1,153 @@
-import PhotosUI
 import SwiftData
 import SwiftUI
-import WidgetKit
 
-/// 设置页：
-/// - 查看/修改宝宝资料
-/// - 重新扫描相册
-/// - 清空本地记录（不动系统相册）
+/// 设置 Tab 的入口：卡片式分层 hub。
+/// 顶部是宝宝头像 + 姓名 + 月龄；下方 3 张卡片分别进二级页。
 struct SettingsView: View {
 
     @Bindable var baby: Baby
 
-    @Environment(\.modelContext) private var context
     @Query private var photos: [PhotoEntry]
     @Query private var milestones: [Milestone]
 
-    @State private var avatarItem: PhotosPickerItem?
-    @State private var importer = PhotoImporter()
-    @State private var refilter = PhotoReFilter()
-    @State private var showingDeleteConfirm = false
-
     var body: some View {
         NavigationStack {
-            Form {
-                // 宝宝资料
-                Section("宝宝资料") {
-                    HStack {
-                        Spacer()
-                        PhotosPicker(selection: $avatarItem, matching: .images) {
-                            AvatarCircle(data: baby.avatarData)
-                        }
-                        Spacer()
-                    }
-                    .listRowBackground(Color.clear)
-
-                    TextField("姓名", text: $baby.name)
-
-                    DatePicker(
-                        "生日",
-                        selection: $baby.birthday,
-                        in: ...Date.now,
-                        displayedComponents: .date
-                    )
-                    .environment(\.locale, Locale(identifier: "zh_CN"))
-
-                    Picker("性别", selection: Binding(
-                        get: { baby.gender ?? "none" },
-                        set: { baby.gender = $0 == "none" ? nil : $0 }
-                    )) {
-                        Text("女宝宝").tag("girl")
-                        Text("男宝宝").tag("boy")
-                        Text("不填").tag("none")
-                    }
+            ScrollView {
+                VStack(spacing: 18) {
+                    headerCard
+                    cards
                 }
-
-                // 数据概览
-                Section("数据") {
-                    LabeledContent("时间线照片", value: "\(photos.count) 张")
-                    LabeledContent("里程碑", value: "\(milestones.count) 条")
-                }
-
-                // 认人
-                ReferenceFaceSection(baby: baby)
-
-                // 补充参考照（应对亲子脸型相近）
-                ExtraPositiveFaceSection(baby: baby)
-
-                // 排除人脸（爸爸/妈妈/其他家人）
-                NegativeFaceSection(baby: baby)
-
-                // 相册同步
-                Section {
-                    Button {
-                        Task { await importer.run(baby: baby, context: context) }
-                    } label: {
-                        switch importer.phase {
-                        case .scanning(let p, let t):
-                            Label("正在扫描 \(p)/\(t) …", systemImage: "arrow.clockwise")
-                        default:
-                            Label("重新扫描相册", systemImage: "arrow.clockwise")
-                        }
-                    }
-                    .disabled(isScanning || isRefiltering)
-
-                    Button {
-                        Task { await refilter.run(baby: baby, context: context) }
-                    } label: {
-                        switch refilter.phase {
-                        case .running(let p, let t):
-                            Label("正在复核 \(p)/\(t) …", systemImage: "line.3.horizontal.decrease.circle")
-                        default:
-                            Label("重新应用过滤规则", systemImage: "line.3.horizontal.decrease.circle")
-                        }
-                    }
-                    .disabled(isScanning || isRefiltering || baby.referenceFacePrintData == nil)
-
-                    if let message = refilterMessage {
-                        Text(message)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                } footer: {
-                    Text("「重新扫描相册」只会把**新拍的**照片补进时间线，已经入库的不会再复核。\n如果你刚刚加了「排除人脸」或者调严了阈值，想把时间线里已有的误判（比如你自己的照片）清掉，就点「重新应用过滤规则」——它会用当前设置重新检查每一张已有记录。系统相册的原图都不会动。")
-                }
-
-                // 危险区
-                Section {
-                    Button(role: .destructive) {
-                        showingDeleteConfirm = true
-                    } label: {
-                        Label("清空时间线记录", systemImage: "trash")
-                    }
-                } footer: {
-                    Text("只会删除 App 里保存的元数据（拍摄时间、标签、备注等）。系统相册里的原图不会动。")
-                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
             }
-            .navigationTitle("设置")
-            .onChange(of: avatarItem) {
-                Task { await loadAvatar() }
-            }
-            .onChange(of: baby.name) { saveAndReloadWidget() }
-            .onChange(of: baby.birthday) { saveAndReloadWidget() }
-            .onChange(of: baby.gender) { saveAndReloadWidget() }
-            .confirmationDialog(
-                "确定清空所有时间线记录吗？",
-                isPresented: $showingDeleteConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("清空", role: .destructive) { clearAll() }
-                Button("取消", role: .cancel) {}
-            } message: {
-                Text("系统相册不受影响。这一步不可撤销。")
-            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
-    // MARK: - 动作
+    // MARK: - Header
 
-    private var isScanning: Bool {
-        if case .scanning = importer.phase { return true }
-        if case .requestingAuth = importer.phase { return true }
-        return false
+    private var headerCard: some View {
+        VStack(spacing: 12) {
+            SettingsAvatar(data: baby.avatarData, size: 110)
+            VStack(spacing: 4) {
+                Text(baby.name.isEmpty ? "宝宝" : baby.name)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Text(ageText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
 
-    private var isRefiltering: Bool {
-        if case .running = refilter.phase { return true }
-        return false
+    private var ageText: String {
+        AgeCalculator.age(birthday: baby.birthday, at: .now).localized
     }
 
-    private var refilterMessage: String? {
-        switch refilter.phase {
-        case .finished(let kept, let removed, let missing):
-            var parts = ["保留 \(kept) 张"]
-            if removed > 0 { parts.append("移除 \(removed) 张") }
-            if missing > 0 { parts.append("相册已删 \(missing) 张") }
-            return "复核完成：\(parts.joined(separator: "，"))。"
-        case .failed(let msg):
-            return msg
-        default:
-            return nil
+    // MARK: - Cards
+
+    private var cards: some View {
+        VStack(spacing: 12) {
+            NavigationLink {
+                BabyProfileView(baby: baby)
+            } label: {
+                SettingsCard(
+                    icon: "person.crop.circle",
+                    title: "宝宝资料",
+                    subtitle: "姓名 · 生日 · 性别 · 头像",
+                    tint: .accentColor
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                FaceRecognitionView(baby: baby)
+            } label: {
+                SettingsCard(
+                    icon: "wand.and.stars",
+                    title: "智能识别",
+                    subtitle: faceSubtitle,
+                    tint: .blue
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                AboutView(photoCount: photos.count, milestoneCount: milestones.count)
+            } label: {
+                SettingsCard(
+                    icon: "info.circle",
+                    title: "关于",
+                    subtitle: "数据 · 版本 · 清理",
+                    tint: .orange
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    private func saveAndReloadWidget() {
-        try? context.save()
-        WidgetCenter.shared.reloadAllTimelines()
-    }
-
-    private func loadAvatar() async {
-        guard let avatarItem else { return }
-        if let data = try? await avatarItem.loadTransferable(type: Data.self) {
-            baby.avatarData = data
-            try? context.save()
+    private var faceSubtitle: String {
+        guard baby.referenceFacePrintData != nil else {
+            return "未设置认人"
         }
+        var parts = ["认人已开启"]
+        let extras = baby.extraPositiveFacePrints.count
+        let negs = baby.negativeFacePrints.count
+        if extras > 0 { parts.append("补充 \(extras)") }
+        if negs > 0 { parts.append("排除 \(negs)") }
+        return parts.joined(separator: " · ")
     }
+}
 
-    private func clearAll() {
-        for photo in photos { context.delete(photo) }
-        try? context.save()
+// MARK: - 通用卡片
+
+struct SettingsCard: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(tint.opacity(0.14))
+                    .frame(width: 48, height: 48)
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundStyle(tint)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
 // MARK: - 头像
 
-private struct AvatarCircle: View {
+struct SettingsAvatar: View {
     let data: Data?
+    var size: CGFloat = 96
 
     var body: some View {
         Group {
@@ -194,394 +157,18 @@ private struct AvatarCircle: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    Circle().fill(Color.pink.opacity(0.15))
+                    Circle().fill(Color.accentColor.opacity(0.15))
                     Image(systemName: "figure.child.circle")
                         .resizable()
                         .scaledToFit()
-                        .padding(20)
-                        .foregroundStyle(Color.pink.opacity(0.6))
+                        .padding(size * 0.22)
+                        .foregroundStyle(Color.accentColor.opacity(0.7))
                 }
             }
         }
-        .frame(width: 96, height: 96)
+        .frame(width: size, height: size)
         .clipShape(Circle())
-    }
-}
-
-// MARK: - 认人参考照
-
-/// 让用户选一张「女儿本人、清晰正脸」的照片作为认人基准，
-/// 并在这里提供匹配阈值滑块。
-private struct ReferenceFaceSection: View {
-    @Bindable var baby: Baby
-
-    @Environment(\.modelContext) private var context
-
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var isProcessing = false
-    @State private var errorMessage: String?
-    @State private var successMessage: String?
-
-    var body: some View {
-        Section {
-            // 当前状态
-            HStack(spacing: 12) {
-                Image(systemName: baby.referenceFacePrintData != nil
-                      ? "person.crop.circle.badge.checkmark"
-                      : "person.crop.circle.badge.questionmark")
-                    .font(.title2)
-                    .foregroundStyle(baby.referenceFacePrintData != nil ? .green : .secondary)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(baby.referenceFacePrintData != nil ? "已开启认人" : "认人未设置")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    Text(baby.referenceFacePrintData != nil
-                         ? "扫描时只纳入含女儿本人的照片"
-                         : "扫描时任何含人脸的照片都会纳入")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.vertical, 4)
-
-            // 选照片
-            PhotosPicker(selection: $pickerItem, matching: .images) {
-                Label(
-                    baby.referenceFacePrintData == nil ? "选一张女儿的认人照片" : "更换认人照片",
-                    systemImage: "person.crop.rectangle"
-                )
-            }
-
-            // 清除
-            if baby.referenceFacePrintData != nil {
-                Button(role: .destructive) {
-                    baby.referenceFacePrintData = nil
-                    // 主参考清掉后，补充参考也一起清，避免留着一堆无主的补充
-                    baby.clearExtraPositiveFacePrints()
-                    try? context.save()
-                    successMessage = "已清除认人照片"
-                } label: {
-                    Label("清除认人照片", systemImage: "trash")
-                }
-            }
-
-            // 阈值
-            if baby.referenceFacePrintData != nil {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("匹配严格程度")
-                            .font(.subheadline)
-                        Spacer()
-                        Text(strictnessLabel)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Slider(
-                        value: $baby.faceMatchThreshold,
-                        in: 10...30,
-                        step: 0.5
-                    )
-                    .onChange(of: baby.faceMatchThreshold) {
-                        try? context.save()
-                    }
-                    HStack {
-                        Text("严格")
-                        Spacer()
-                        Text("宽松")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-            }
-
-            // 状态提示
-            if isProcessing {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("正在分析人脸…").font(.footnote)
-                }
-            }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-            if let successMessage {
-                Text(successMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.green)
-            }
-        } header: {
-            Text("认人")
-        } footer: {
-            Text("选一张只包含女儿本人的清晰正脸照作为**主参考**。如果父母和女儿脸型比较像，建议再去下面「女儿补充参考照」里加几张不同角度 / 不同月龄的女儿照，匹配会更准。改了认人照或阈值后，记得「重新扫描相册」或「重新应用过滤规则」。")
-        }
-        .onChange(of: pickerItem) {
-            Task { await generateReference() }
-        }
-    }
-
-    private var strictnessLabel: String {
-        switch baby.faceMatchThreshold {
-        case ..<14: return "很严 (\(String(format: "%.1f", baby.faceMatchThreshold)))"
-        case 14..<20: return "适中 (\(String(format: "%.1f", baby.faceMatchThreshold)))"
-        default: return "宽松 (\(String(format: "%.1f", baby.faceMatchThreshold)))"
-        }
-    }
-
-    private func generateReference() async {
-        guard let pickerItem else { return }
-        errorMessage = nil
-        successMessage = nil
-        isProcessing = true
-        defer { isProcessing = false }
-
-        guard
-            let data = try? await pickerItem.loadTransferable(type: Data.self),
-            let uiImage = UIImage(data: data),
-            let cgImage = uiImage.cgImage
-        else {
-            errorMessage = "读取照片失败，换一张试试。"
-            return
-        }
-
-        guard let printData = await FaceRecognitionService.generateReferencePrint(from: cgImage) else {
-            errorMessage = "没在这张照片里找到清晰的人脸。请换一张正脸照。"
-            return
-        }
-
-        baby.referenceFacePrintData = printData
-        try? context.save()
-        successMessage = "认人照片已设置。记得去「重新扫描相册」。"
-    }
-}
-
-// MARK: - 排除人脸
-
-/// 让用户添加多张「不是女儿」的参考脸（爸爸、妈妈、其他家人等）。
-/// 扫描时任何更像这些脸而不是女儿的照片都会被过滤掉。
-private struct NegativeFaceSection: View {
-    @Bindable var baby: Baby
-
-    @Environment(\.modelContext) private var context
-
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var isProcessing = false
-    @State private var errorMessage: String?
-    @State private var successMessage: String?
-
-    var body: some View {
-        Section {
-            HStack(spacing: 12) {
-                Image(systemName: baby.negativeFacePrints.isEmpty
-                      ? "person.2.slash"
-                      : "person.2.slash.fill")
-                    .font(.title2)
-                    .foregroundStyle(baby.negativeFacePrints.isEmpty ? Color.secondary : Color.orange)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(baby.negativeFacePrints.isEmpty
-                         ? "还没有排除人脸"
-                         : "已排除 \(baby.negativeFacePrints.count) 张脸")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    Text("扫描时会过滤掉更像这些脸的照片")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.vertical, 4)
-
-            PhotosPicker(selection: $pickerItem, matching: .images) {
-                Label("加一张不是女儿的脸（爸爸/妈妈/…）", systemImage: "person.badge.minus")
-            }
-            .disabled(baby.referenceFacePrintData == nil)
-
-            if !baby.negativeFacePrints.isEmpty {
-                Button(role: .destructive) {
-                    baby.clearNegativeFacePrints()
-                    try? context.save()
-                    successMessage = "已清空排除人脸"
-                } label: {
-                    Label("清空所有排除人脸", systemImage: "trash")
-                }
-            }
-
-            if isProcessing {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("正在分析人脸…").font(.footnote)
-                }
-            }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-            if let successMessage {
-                Text(successMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.green)
-            }
-        } header: {
-            Text("排除人脸")
-        } footer: {
-            if baby.referenceFacePrintData == nil {
-                Text("需要先设置上面的「认人」照片，才能添加排除人脸。")
-            } else {
-                Text("如果你发现扫描结果里把你自己或其他家人错当成女儿了，在这里加一张你本人/那个家人的正脸照，再「重新扫描相册」就能把这类误判过滤掉。可以加多张（爸爸、外公、外婆……）。")
-            }
-        }
-        .onChange(of: pickerItem) {
-            Task { await addNegative() }
-        }
-    }
-
-    private func addNegative() async {
-        guard let pickerItem else { return }
-        errorMessage = nil
-        successMessage = nil
-        isProcessing = true
-        defer {
-            isProcessing = false
-            self.pickerItem = nil
-        }
-
-        guard
-            let data = try? await pickerItem.loadTransferable(type: Data.self),
-            let uiImage = UIImage(data: data),
-            let cgImage = uiImage.cgImage
-        else {
-            errorMessage = "读取照片失败，换一张试试。"
-            return
-        }
-
-        guard let printData = await FaceRecognitionService.generateNegativePrint(from: cgImage) else {
-            errorMessage = "没在这张照片里找到清晰的人脸。请换一张正脸照。"
-            return
-        }
-
-        baby.addNegativeFacePrint(printData)
-        try? context.save()
-        successMessage = "已添加。现在共 \(baby.negativeFacePrints.count) 张排除人脸。记得去「重新扫描相册」。"
-    }
-}
-
-// MARK: - 补充正参考照（应对亲子脸型相近）
-
-/// 让用户在主认人照之外再追加几张「不同角度 / 不同月龄」的女儿照片作为补充参考。
-///
-/// 为什么需要这个：`VNGenerateImageFeaturePrintRequest` 不是专门的人脸模型，
-/// 亲子脸型相近时单张参考照容易分不清父母和孩子。放多张女儿不同姿势 / 时期的
-/// 参考照后，匹配时 `positiveDist` 取对所有参考的最小值——真正是女儿的脸
-/// 只要和其中**任意一张**参考足够像，就能稳定命中；父母脸不会因此受益。
-private struct ExtraPositiveFaceSection: View {
-    @Bindable var baby: Baby
-
-    @Environment(\.modelContext) private var context
-
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var isProcessing = false
-    @State private var errorMessage: String?
-    @State private var successMessage: String?
-
-    var body: some View {
-        Section {
-            HStack(spacing: 12) {
-                Image(systemName: baby.extraPositiveFacePrints.isEmpty
-                      ? "person.2.circle"
-                      : "person.2.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(baby.extraPositiveFacePrints.isEmpty ? Color.secondary : Color.green)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(baby.extraPositiveFacePrints.isEmpty
-                         ? "只有一张主参考"
-                         : "已补充 \(baby.extraPositiveFacePrints.count) 张女儿参考照")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    Text("不同角度 / 月龄越多，识别越稳")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.vertical, 4)
-
-            PhotosPicker(selection: $pickerItem, matching: .images) {
-                Label("追加一张女儿的补充参考照", systemImage: "person.badge.plus")
-            }
-            .disabled(baby.referenceFacePrintData == nil)
-
-            if !baby.extraPositiveFacePrints.isEmpty {
-                Button(role: .destructive) {
-                    baby.clearExtraPositiveFacePrints()
-                    try? context.save()
-                    successMessage = "已清空补充参考照"
-                } label: {
-                    Label("清空所有补充参考照", systemImage: "trash")
-                }
-            }
-
-            if isProcessing {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("正在分析人脸…").font(.footnote)
-                }
-            }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-            if let successMessage {
-                Text(successMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.green)
-            }
-        } header: {
-            Text("女儿补充参考照")
-        } footer: {
-            if baby.referenceFacePrintData == nil {
-                Text("需要先设置上面的「认人」主参考照，才能追加补充参考。")
-            } else {
-                Text("父母和孩子脸型相近时，单张参考照很容易分不清。多放几张**不同角度 / 不同月龄**的女儿照片（正脸、侧脸、微笑、6 个月 / 1 岁…），匹配时 `positiveDist` 会取对所有参考的最小值——女儿的脸更容易被命中，父母的脸不会跟着变像。建议 3–5 张。加完记得「重新扫描相册」或「重新应用过滤规则」。")
-            }
-        }
-        .onChange(of: pickerItem) {
-            Task { await addExtra() }
-        }
-    }
-
-    private func addExtra() async {
-        guard let pickerItem else { return }
-        errorMessage = nil
-        successMessage = nil
-        isProcessing = true
-        defer {
-            isProcessing = false
-            self.pickerItem = nil
-        }
-
-        guard
-            let data = try? await pickerItem.loadTransferable(type: Data.self),
-            let uiImage = UIImage(data: data),
-            let cgImage = uiImage.cgImage
-        else {
-            errorMessage = "读取照片失败，换一张试试。"
-            return
-        }
-
-        guard let printData = await FaceRecognitionService.generateReferencePrint(from: cgImage) else {
-            errorMessage = "没在这张照片里找到清晰的人脸。请换一张正脸照。"
-            return
-        }
-
-        baby.addExtraPositiveFacePrint(printData)
-        try? context.save()
-        successMessage = "已添加。现在共 \(baby.extraPositiveFacePrints.count) 张补充参考。记得去「重新应用过滤规则」。"
+        .overlay(Circle().stroke(.white, lineWidth: 2))
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
     }
 }

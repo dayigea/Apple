@@ -14,7 +14,7 @@ struct GrowthHubView: View {
                     } label: {
                         FeatureRow(
                             icon: "chart.xyaxis.line",
-                            color: .pink,
+                            color: .indigo,
                             title: "成长数据",
                             subtitle: "记录身高、体重、头围，对照 WHO 生长曲线"
                         )

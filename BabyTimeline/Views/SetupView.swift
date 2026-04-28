@@ -131,12 +131,12 @@ private struct AvatarView: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    Circle().fill(Color.pink.opacity(0.15))
+                    Circle().fill(Color.accentColor.opacity(0.15))
                     Image(systemName: "figure.child.circle")
                         .resizable()
                         .scaledToFit()
                         .padding(24)
-                        .foregroundStyle(Color.pink.opacity(0.6))
+                        .foregroundStyle(Color.accentColor.opacity(0.7))
                 }
             }
         }
