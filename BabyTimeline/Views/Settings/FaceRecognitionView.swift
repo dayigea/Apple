@@ -133,7 +133,7 @@ struct FaceRecognitionView: View {
             .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.accent)
+        .foregroundStyle(Color.accentColor)
         .disabled(isScanning || isRefiltering)
     }
 
@@ -155,7 +155,7 @@ struct FaceRecognitionView: View {
             .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.accent)
+        .foregroundStyle(Color.accentColor)
         .disabled(isScanning || isRefiltering || baby.referenceFacePrintData == nil)
     }
 
@@ -511,7 +511,7 @@ private struct PrimaryActionLabel: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Color.accentColor.opacity(0.12))
-        .foregroundStyle(.accent)
+        .foregroundStyle(Color.accentColor)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
