@@ -15,6 +15,7 @@ struct AboutView: View {
         ScrollView {
             VStack(spacing: 16) {
                 statsCard
+                appGroupCard
                 infoCard
                 dangerCard
             }
@@ -34,6 +35,43 @@ struct AboutView: View {
         } message: {
             Text("系统相册不受影响。这一步不可撤销。")
         }
+    }
+
+    // MARK: - App Group 诊断
+
+    private var appGroupCard: some View {
+        let shared = AppGroup.isUsingSharedContainer
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: shared ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .font(.title3)
+                    .foregroundStyle(shared ? .green : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(shared ? "App Group 已生效" : "App Group 未生效")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text(shared
+                         ? "本 App 写入的数据可以被 Widget 读到"
+                         : "Widget 看不到 App 的数据")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            if !shared {
+                Text("请到 Xcode → BabyTimeline target → Signing & Capabilities → +Capability → App Groups，勾上 group.com.personal.babytimeline。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("如果 Widget 仍显示「还没设置宝宝信息」，说明 BabyTimelineWidget target 还没勾 App Group——这两个 target 必须各自勾一次。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: - Stats

@@ -121,38 +121,62 @@ enum PhotoLibraryService {
 
     /// 请求视频的 AVAsset（用于播放或帧提取）。
     static func requestAVAsset(for asset: PHAsset) async -> AVAsset? {
-        await withCheckedContinuation { continuation in
-            let gate = ContinuationGate()
-            let options = PHVideoRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .automatic
+        let holder = RequestIDHolder()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let gate = ContinuationGate()
+                let options = PHVideoRequestOptions()
+                options.isNetworkAccessAllowed = true
+                options.deliveryMode = .automatic
 
-            PHImageManager.default().requestAVAsset(
-                forVideo: asset,
-                options: options
-            ) { avAsset, _, _ in
-                if gate.open() {
-                    continuation.resume(returning: avAsset)
+                let id = PHImageManager.default().requestAVAsset(
+                    forVideo: asset,
+                    options: options
+                ) { avAsset, _, _ in
+                    if gate.open() {
+                        continuation.resume(returning: avAsset)
+                    }
                 }
+                holder.set(id)
+                if Task.isCancelled {
+                    PHImageManager.default().cancelImageRequest(id)
+                }
+            }
+        } onCancel: {
+            let id = holder.consume()
+            if id != PHInvalidImageRequestID {
+                PHImageManager.default().cancelImageRequest(id)
             }
         }
     }
 
     /// 请求视频的 AVPlayerItem（用于 AVPlayer 播放）。
     static func requestPlayerItem(for asset: PHAsset) async -> AVPlayerItem? {
-        await withCheckedContinuation { continuation in
-            let gate = ContinuationGate()
-            let options = PHVideoRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .automatic
+        let holder = RequestIDHolder()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let gate = ContinuationGate()
+                let options = PHVideoRequestOptions()
+                options.isNetworkAccessAllowed = true
+                options.deliveryMode = .automatic
 
-            PHImageManager.default().requestPlayerItem(
-                forVideo: asset,
-                options: options
-            ) { playerItem, _ in
-                if gate.open() {
-                    continuation.resume(returning: playerItem)
+                let id = PHImageManager.default().requestPlayerItem(
+                    forVideo: asset,
+                    options: options
+                ) { playerItem, _ in
+                    if gate.open() {
+                        continuation.resume(returning: playerItem)
+                    }
                 }
+                holder.set(id)
+                if Task.isCancelled {
+                    PHImageManager.default().cancelImageRequest(id)
+                }
+            }
+        } onCancel: {
+            let id = holder.consume()
+            if id != PHInvalidImageRequestID {
+                PHImageManager.default().cancelImageRequest(id)
             }
         }
     }
@@ -164,41 +188,82 @@ enum PhotoLibraryService {
         targetSize: CGSize,
         deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic
     ) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            let gate = ContinuationGate()
-            let options = PHImageRequestOptions()
-            options.isNetworkAccessAllowed = true
-            // 导入 / 分析路径要求只拿一次最终图：opportunistic 会先回调低清图
-            // 再回调高清图，这种多次回调 + 我们之前用 `var didResume = false`
-            // 跨线程更新的写法存在竞态，可能双重 resume → EXC_BAD_ACCESS。
-            // highQualityFormat 保证只触发一次非降级回调，再配合 ContinuationGate
-            // 把所有路径收敛到「最多 resume 一次」。
-            options.deliveryMode = deliveryMode == .opportunistic
-                ? .highQualityFormat
-                : deliveryMode
-            options.resizeMode = .fast
-            options.isSynchronous = false
+        let holder = RequestIDHolder()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let gate = ContinuationGate()
+                let options = PHImageRequestOptions()
+                options.isNetworkAccessAllowed = true
+                // 导入 / 分析路径要求只拿一次最终图：opportunistic 会先回调低清图
+                // 再回调高清图，这种多次回调 + 我们之前用 `var didResume = false`
+                // 跨线程更新的写法存在竞态，可能双重 resume → EXC_BAD_ACCESS。
+                // highQualityFormat 保证只触发一次非降级回调，再配合 ContinuationGate
+                // 把所有路径收敛到「最多 resume 一次」。
+                options.deliveryMode = deliveryMode == .opportunistic
+                    ? .highQualityFormat
+                    : deliveryMode
+                options.resizeMode = .fast
+                options.isSynchronous = false
 
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: targetSize,
-                contentMode: .aspectFit,
-                options: options
-            ) { image, info in
-                // iCloud 下载失败 / 取消 / 降级图都不 resume，等最终非降级图。
-                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
-                let hasError = info?[PHImageErrorKey] != nil
-                if isDegraded { return }
-                // 最终图到了（可能是 nil，比如 iCloud 下载失败）
-                if gate.open() {
-                    if isCancelled || hasError {
-                        continuation.resume(returning: nil)
-                    } else {
-                        continuation.resume(returning: image)
+                let id = PHImageManager.default().requestImage(
+                    for: asset,
+                    targetSize: targetSize,
+                    contentMode: .aspectFit,
+                    options: options
+                ) { image, info in
+                    // iCloud 下载失败 / 取消 / 降级图都不 resume，等最终非降级图。
+                    let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                    let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                    let hasError = info?[PHImageErrorKey] != nil
+                    if isDegraded { return }
+                    // 最终图到了（可能是 nil，比如 iCloud 下载失败）
+                    if gate.open() {
+                        if isCancelled || hasError {
+                            continuation.resume(returning: nil)
+                        } else {
+                            continuation.resume(returning: image)
+                        }
                     }
                 }
+                holder.set(id)
+
+                // 处理在 set(id) 之前任务就被取消的极端情况：
+                // 此时 onCancel 已经跑过、看到的是 invalid id，没法取消请求。
+                // 这里读一下 Task 状态，落后补一刀。
+                if Task.isCancelled {
+                    PHImageManager.default().cancelImageRequest(id)
+                }
+            }
+        } onCancel: {
+            // Task 被外层 TaskGroup.cancelAll 取消时，PHImageManager 的回调闭包不会
+            // 自己结束。必须显式取消请求，回调才会以 PHImageCancelledKey=true 触发，
+            // 进而 resume continuation，让 analyze 槽位释放出来。
+            let id = holder.consume()
+            if id != PHInvalidImageRequestID {
+                PHImageManager.default().cancelImageRequest(id)
             }
         }
+    }
+}
+
+/// 在 `withTaskCancellationHandler` 的 body 与 onCancel 之间安全地共享
+/// PHImageRequestID。两端都通过 lock 访问。
+private final class RequestIDHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var id: PHImageRequestID = PHInvalidImageRequestID
+
+    func set(_ value: PHImageRequestID) {
+        lock.lock()
+        defer { lock.unlock() }
+        id = value
+    }
+
+    /// 读取并清零，避免重复取消。
+    func consume() -> PHImageRequestID {
+        lock.lock()
+        defer { lock.unlock() }
+        let v = id
+        id = PHInvalidImageRequestID
+        return v
     }
 }
