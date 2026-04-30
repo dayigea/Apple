@@ -140,11 +140,8 @@ struct PhotoSourceView: View {
                 Text("导入完成：新增 \(inserted) 张")
                     .font(.caption)
                     .foregroundStyle(.green)
-                if skipped > 0 || beforeBirthday > 0 {
-                    var parts: [String] = []
-                    if skipped > 0 { parts.append("已存在 \(skipped) 张") }
-                    if beforeBirthday > 0 { parts.append("早于生日 \(beforeBirthday) 张") }
-                    Text("跳过：\(parts.joined(separator: "，"))")
+                if let skipText = skippedSummary(skipped: skipped, beforeBirthday: beforeBirthday) {
+                    Text(skipText)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -241,5 +238,13 @@ struct PhotoSourceView: View {
             baby: baby,
             context: context
         )
+    }
+
+    private func skippedSummary(skipped: Int, beforeBirthday: Int) -> String? {
+        var parts: [String] = []
+        if skipped > 0 { parts.append("已存在 \(skipped) 张") }
+        if beforeBirthday > 0 { parts.append("早于生日 \(beforeBirthday) 张") }
+        guard !parts.isEmpty else { return nil }
+        return "跳过：\(parts.joined(separator: "，"))"
     }
 }
