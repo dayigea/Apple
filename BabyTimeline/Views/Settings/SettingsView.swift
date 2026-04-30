@@ -66,12 +66,12 @@ struct SettingsView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
-                FaceRecognitionView(baby: baby)
+                PhotoSourceView(baby: baby)
             } label: {
                 SettingsCard(
-                    icon: "wand.and.stars",
-                    title: "智能识别",
-                    subtitle: faceSubtitle,
+                    icon: "photo.stack",
+                    title: "宝宝照片",
+                    subtitle: photoSubtitle,
                     tint: .blue
                 )
             }
@@ -91,16 +91,11 @@ struct SettingsView: View {
         }
     }
 
-    private var faceSubtitle: String {
-        guard baby.referenceFacePrintData != nil else {
-            return "未设置认人"
+    private var photoSubtitle: String {
+        if photos.isEmpty {
+            return "还没有导入照片"
         }
-        var parts = ["认人已开启"]
-        let extras = baby.extraPositiveFacePrints.count
-        let negs = baby.negativeFacePrints.count
-        if extras > 0 { parts.append("补充 \(extras)") }
-        if negs > 0 { parts.append("排除 \(negs)") }
-        return parts.joined(separator: " · ")
+        return "\(photos.count) 张已导入"
     }
 }
 
