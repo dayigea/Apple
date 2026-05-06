@@ -41,6 +41,10 @@ final class Baby {
     /// 认人匹配阈值。`VNFeaturePrintObservation.computeDistance` 返回值越小越像，
     /// 阈值越小越严格。典型范围 10 – 30，默认 18 适中。
     var faceMatchThreshold: Double
+    /// 已勾选完成的发育里程碑项 → 完成日期。
+    /// **必须是 Optional**：SwiftData 老 store 迁移时不能给非可选新字段补默认值。
+    /// 存的是 `[itemId: dateCompleted]` 的 JSON 编码。
+    var completedDevelopmentItemsRawJSON: Data?
     var createdAt: Date
 
     init(
@@ -145,6 +149,37 @@ final class Baby {
     /// 清空所有排除人脸。
     func clearNegativeFacePrints() {
         negativeFacePrintsRawJSON = nil
+    }
+
+    // MARK: - 发育清单已完成项
+
+    /// 当前所有已勾选完成的发育里程碑：itemId → 完成日期
+    var completedDevelopmentItems: [String: Date] {
+        guard let raw = completedDevelopmentItemsRawJSON,
+              let dict = try? JSONDecoder().decode([String: Date].self, from: raw) else {
+            return [:]
+        }
+        return dict
+    }
+
+    /// 切换某个发育项的完成状态；勾上时记录今天的日期，取消时移除。
+    /// 返回切换后的新状态（true = 已完成）。
+    @discardableResult
+    func toggleDevelopmentItem(_ itemId: String) -> Bool {
+        var current = completedDevelopmentItems
+        if current[itemId] != nil {
+            current.removeValue(forKey: itemId)
+        } else {
+            current[itemId] = .now
+        }
+        completedDevelopmentItemsRawJSON = current.isEmpty
+            ? nil
+            : (try? JSONEncoder().encode(current))
+        return current[itemId] != nil
+    }
+
+    func isDevelopmentItemCompleted(_ itemId: String) -> Bool {
+        completedDevelopmentItems[itemId] != nil
     }
 
     // MARK: - 共用 JSON 编解码

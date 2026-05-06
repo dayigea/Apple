@@ -43,6 +43,17 @@ struct GrowthHubView: View {
                     }
 
                     NavigationLink {
+                        DevelopmentChecklistView(baby: baby)
+                    } label: {
+                        FeatureRow(
+                            icon: "checklist",
+                            color: .purple,
+                            title: "发育清单",
+                            subtitle: "按月龄勾选已掌握的大动作 / 语言 / 社交…"
+                        )
+                    }
+
+                    NavigationLink {
                         FoodGuideView(baby: baby)
                     } label: {
                         FeatureRow(
