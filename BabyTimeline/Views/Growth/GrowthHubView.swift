@@ -54,6 +54,17 @@ struct GrowthHubView: View {
                     }
 
                     NavigationLink {
+                        PediatricView(baby: baby)
+                    } label: {
+                        FeatureRow(
+                            icon: "stethoscope",
+                            color: .pink,
+                            title: "体检 / 疫苗",
+                            subtitle: "提醒近期儿保和疫苗，记录每次的体格数据"
+                        )
+                    }
+
+                    NavigationLink {
                         FoodGuideView(baby: baby)
                     } label: {
                         FeatureRow(
