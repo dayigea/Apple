@@ -19,6 +19,8 @@ enum AppGroup {
     /// 如果 App Group 还没在 Xcode Signing & Capabilities 里配好，
     /// 会退化到各自 target 的 Documents 目录——此时主 App 和 Widget 各写各的，互相看不到。
     /// 这里会打日志（Console.app 里搜 subsystem `com.personal.babytimeline`）提醒。
+    /// 注意：以前 DEBUG 下会 assertionFailure，但 widget 扩展崩了之后整个 widget 就废了，
+    /// 现在改成只记日志 + 在 App 的 About 页面用 UI 兜底告知。
     static var sharedStoreURL: URL {
         if let groupURL = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: identifier) {
@@ -29,9 +31,6 @@ enum AppGroup {
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appending(path: "BabyTimeline.store")
         log.error("App Group '\(identifier, privacy: .public)' NOT available — falling back to Documents/. 主 App 和 Widget 看不到对方的数据！请在 Xcode → Signing & Capabilities 里给两个 target 都勾上 App Groups。Fallback path: \(url.path, privacy: .public)")
-        #if DEBUG
-        assertionFailure("App Group 未配置，主 App 与 Widget 数据无法共享。Console.app 看上面的错误日志。")
-        #endif
         return url
     }
 }
