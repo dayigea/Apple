@@ -34,7 +34,7 @@ final class PhotoImporter {
         case requestingAuth
         case scanning(processed: Int, total: Int)
         case geocoding(processed: Int, total: Int)
-        case finished(inserted: Int, skipped: Int)
+        case finished(inserted: Int, skipped: Int, notDownloaded: Int)
         case failed(String)
     }
 
@@ -58,7 +58,7 @@ final class PhotoImporter {
         // 2. 拉 PHAsset
         let allAssets = PhotoLibraryService.fetchAssets(after: baby.birthday)
         if allAssets.isEmpty {
-            phase = .finished(inserted: 0, skipped: 0)
+            phase = .finished(inserted: 0, skipped: 0, notDownloaded: 0)
             return
         }
 
@@ -68,7 +68,7 @@ final class PhotoImporter {
         let skippedExisting = allAssets.count - assets.count
 
         if assets.isEmpty {
-            phase = .finished(inserted: 0, skipped: skippedExisting)
+            phase = .finished(inserted: 0, skipped: skippedExisting, notDownloaded: 0)
             return
         }
 
@@ -86,6 +86,7 @@ final class PhotoImporter {
         // 不会因为某张 iCloud 照片下载慢而让其它工位空转。
         let maxConcurrency = 6
         var inserted = 0
+        var notDownloaded = 0
         var processed = 0
         var nextIndex = 0
 
@@ -93,7 +94,7 @@ final class PhotoImporter {
         let capturedNeg = negativeReferences
         let capturedThreshold = threshold
 
-        await withTaskGroup(of: AnalysisResult?.self) { group in
+        await withTaskGroup(of: AnalysisOutcome.self) { group in
             // 播种：先塞满工位
             while nextIndex < assets.count, nextIndex < maxConcurrency {
                 let asset = assets[nextIndex]
@@ -109,11 +110,12 @@ final class PhotoImporter {
             }
 
             // 流式消费：每完成一个，立刻补一个新任务
-            for await result in group {
+            for await outcome in group {
                 processed += 1
                 phase = .scanning(processed: processed, total: assets.count)
 
-                if let result {
+                switch outcome {
+                case .ok(let result):
                     let entry = PhotoEntry(
                         assetLocalId: result.assetLocalId,
                         creationDate: result.creationDate,
@@ -137,6 +139,10 @@ final class PhotoImporter {
                     if inserted % 20 == 0 {
                         try? context.save()
                     }
+                case .notDownloaded:
+                    notDownloaded += 1
+                case .filteredOut:
+                    break
                 }
 
                 // 补一个新任务进去
@@ -161,7 +167,11 @@ final class PhotoImporter {
         // 6. 批量补全地理编码（不阻塞主流程，后台异步）
         await geocodePending(context: context)
 
-        phase = .finished(inserted: inserted, skipped: skippedExisting + (assets.count - inserted))
+        phase = .finished(
+            inserted: inserted,
+            skipped: skippedExisting + (assets.count - inserted - notDownloaded),
+            notDownloaded: notDownloaded
+        )
     }
 
     // MARK: - 并发分析
@@ -177,14 +187,26 @@ final class PhotoImporter {
         let duration: Double
     }
 
-    /// 带超时的单张分析：超过 15 秒自动放弃，防止 iCloud 下载卡死流水线。
+    /// `analyzeOne` 的三种结局：
+    /// - `.ok` 通过了所有过滤，准备落库
+    /// - `.notDownloaded` 拿不到本地图（iCloud-only 或下载失败）—— 用户后面把照片下到本地再扫一次能补上
+    /// - `.filteredOut` 拿到图了但被人脸/参考过滤掉，正常跳过
+    private enum AnalysisOutcome {
+        case ok(AnalysisResult)
+        case notDownloaded
+        case filteredOut
+    }
+
+    /// 带超时的单张分析：超过 5 秒自动放弃。
+    /// 由于 PhotoLibraryService 已禁用 iCloud 下载，本地照片正常 < 1s，
+    /// 5s 留作 Vision/慢设备的 buffer，更激进。
     private nonisolated func analyzeOneWithTimeout(
         _ asset: PHAsset,
         references: [VNFeaturePrintObservation],
         negativeReferences: [VNFeaturePrintObservation],
         threshold: Float
-    ) async -> AnalysisResult? {
-        await withTaskGroup(of: AnalysisResult?.self) { group in
+    ) async -> AnalysisOutcome {
+        await withTaskGroup(of: AnalysisOutcome.self) { group in
             group.addTask {
                 await self.analyzeOne(
                     asset,
@@ -194,10 +216,11 @@ final class PhotoImporter {
                 )
             }
             group.addTask {
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
-                return nil
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                // 超时多半也是因为图没下到本地，归类成 notDownloaded
+                return .notDownloaded
             }
-            let first = await group.next() ?? nil
+            let first = await group.next() ?? .notDownloaded
             group.cancelAll()
             return first
         }
@@ -208,17 +231,17 @@ final class PhotoImporter {
         references: [VNFeaturePrintObservation],
         negativeReferences: [VNFeaturePrintObservation],
         threshold: Float
-    ) async -> AnalysisResult? {
+    ) async -> AnalysisOutcome {
         let isVideo = asset.mediaType == .video
 
-        // 取分析图
+        // 取分析图（不联网，iCloud-only 立刻返回 nil）
         let cgImage: CGImage?
         if isVideo {
             cgImage = await PhotoLibraryService.requestVideoAnalysisImage(for: asset)
         } else {
             cgImage = await PhotoLibraryService.requestAnalysisImage(for: asset)
         }
-        guard let cgImage else { return nil }
+        guard let cgImage else { return .notDownloaded }
 
         // 人脸检查
         let faceCount: Int
@@ -229,11 +252,11 @@ final class PhotoImporter {
                 negativeReferences: negativeReferences,
                 threshold: threshold
             )
-            guard result.matched else { return nil }
+            guard result.matched else { return .filteredOut }
             faceCount = result.faceCount
         } else {
             let faces = await FaceRecognitionService.detectFaces(in: cgImage)
-            guard !faces.isEmpty else { return nil }
+            guard !faces.isEmpty else { return .filteredOut }
             faceCount = faces.count
         }
 
@@ -243,7 +266,7 @@ final class PhotoImporter {
         // 元数据
         let meta = MetadataExtractor.extract(from: asset)
 
-        return AnalysisResult(
+        return .ok(AnalysisResult(
             assetLocalId: asset.localIdentifier,
             creationDate: meta.creationDate,
             latitude: meta.latitude,
@@ -252,7 +275,7 @@ final class PhotoImporter {
             tags: tags,
             mediaType: isVideo ? 1 : 0,
             duration: isVideo ? asset.duration : 0
-        )
+        ))
     }
 
     // MARK: - 延迟地理编码

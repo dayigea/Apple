@@ -155,7 +155,7 @@ private struct EmptyTimelineView: View {
             return "正在整理相册里的照片和视频…\n只纳入含有人脸的内容"
         case .geocoding:
             return "正在补全地点信息…"
-        case .finished(let inserted, _):
+        case .finished(let inserted, _, _):
             return inserted == 0
                 ? "没有找到符合条件的照片或视频\n确认相册里有出生之后、含有人脸的内容"
                 : "已整理 \(inserted) 条记录"

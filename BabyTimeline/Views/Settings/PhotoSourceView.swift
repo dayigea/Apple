@@ -1,9 +1,10 @@
 import SwiftData
 import SwiftUI
 
-/// 「宝宝照片」二级页：
-/// - 主路径：PHPicker 让用户在「人物与宠物」里选宝宝那一组，全选导入
-/// - 高级（折叠）：旧的自动扫描 + 自家人脸识别那一套，保留作为备选
+/// 「宝宝照片」页：
+/// - 主操作：扫描相册（自动识别 + 自家人脸过滤），不联网避免 iCloud 卡死
+/// - 副操作：从相册手动选（PHPicker，适合补几张）
+/// - 入口：进识别设置（管理认人参考照、补充参考、排除人脸）
 struct PhotoSourceView: View {
 
     @Bindable var baby: Baby
@@ -11,17 +12,17 @@ struct PhotoSourceView: View {
     @Environment(\.modelContext) private var context
     @Query private var photos: [PhotoEntry]
 
+    @State private var importer = PhotoImporter()
     @State private var pickerImporter = PhotoPickerImporter()
     @State private var isPickerPresented = false
-    @State private var showAdvanced = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                introCard
-                primaryActionCard
                 statsCard
-                advancedDisclosure
+                referenceStatusCard
+                scanCard
+                pickerCard
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
@@ -34,125 +35,6 @@ struct PhotoSourceView: View {
                 Task { await runPickerImport(identifiers) }
             }
             .ignoresSafeArea()
-        }
-    }
-
-    // MARK: - Intro
-
-    private var introCard: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "person.crop.rectangle.stack.fill")
-                .font(.title3)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 30)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("用 Apple 的人像识别")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text("在系统相册的「人物与宠物」里点宝宝那一组，全选回到这里，比 App 自己识别更准。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    // MARK: - Primary action
-
-    private var primaryActionCard: some View {
-        VStack(spacing: 12) {
-            Button {
-                isPickerPresented = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "photo.badge.plus")
-                        .font(.headline)
-                    Text(isImporting ? "正在导入…" : "从相册导入照片")
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(Color.accentColor)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(isImporting)
-
-            stepGuide
-            statusFooter
-        }
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private var stepGuide: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            stepRow(num: 1, text: "点上方按钮 → 打开系统相册选择器")
-            stepRow(num: 2, text: "下方切到「相簿」→ 找到「人物与宠物」")
-            stepRow(num: 3, text: "点宝宝头像 → 右上角全选 → 完成")
-        }
-        .padding(.top, 4)
-    }
-
-    private func stepRow(num: Int, text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            ZStack {
-                Circle().fill(Color.accentColor.opacity(0.18))
-                    .frame(width: 18, height: 18)
-                Text("\(num)")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
-            }
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private var statusFooter: some View {
-        switch pickerImporter.phase {
-        case .idle:
-            EmptyView()
-        case .importing(let p, let t):
-            ProgressView(value: Double(p), total: Double(max(t, 1))) {
-                Text("正在导入 \(p)/\(t)").font(.caption2)
-            }
-            .progressViewStyle(.linear)
-            .padding(.top, 4)
-        case .geocoding(let p, let t):
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("反查地名 \(p)/\(t)…").font(.caption)
-            }
-            .padding(.top, 4)
-        case .finished(let inserted, let skipped, let beforeBirthday):
-            VStack(alignment: .leading, spacing: 2) {
-                Text("导入完成：新增 \(inserted) 张")
-                    .font(.caption)
-                    .foregroundStyle(.green)
-                if let skipText = skippedSummary(skipped: skipped, beforeBirthday: beforeBirthday) {
-                    Text(skipText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 4)
-        case .failed(let msg):
-            Text(msg)
-                .font(.caption)
-                .foregroundStyle(.red)
-                .padding(.top, 4)
         }
     }
 
@@ -178,58 +60,229 @@ struct PhotoSourceView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: - Advanced
+    // MARK: - Reference status
 
-    private var advancedDisclosure: some View {
-        VStack(spacing: 0) {
-            DisclosureGroup(isExpanded: $showAdvanced) {
-                NavigationLink {
-                    FaceRecognitionView(baby: baby)
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "wand.and.stars")
-                            .foregroundStyle(.blue)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("自家人脸识别 + 自动扫描")
-                                .font(.subheadline)
-                            Text("不用 Apple 人像分组时的备选方案")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "slider.horizontal.3")
-                        .foregroundStyle(.secondary)
-                    Text("高级")
+    private var referenceStatusCard: some View {
+        let hasRef = baby.referenceFacePrintData != nil
+        return NavigationLink {
+            FaceRecognitionView(baby: baby)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: hasRef ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .font(.title3)
+                    .foregroundStyle(hasRef ? .green : .orange)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hasRef ? "认人参考照已设置" : "建议先设置认人参考照")
                         .font(.subheadline)
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Text(hasRef
+                         ? "扫描时只纳入宝宝的照片"
+                         : "不设置的话，扫描会纳入所有含人脸的照片")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Scan
+
+    private var scanCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("扫描相册")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("只处理已下载到本地的照片，不会卡在 iCloud")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            Button {
+                Task { await importer.run(baby: baby, context: context) }
+            } label: {
+                HStack(spacing: 8) {
+                    if isScanning {
+                        ProgressView().controlSize(.small).tint(.white)
+                    } else {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    Text(scanButtonText)
+                        .fontWeight(.semibold)
                     Spacer()
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.accentColor)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .tint(.primary)
+            .buttonStyle(.plain)
+            .disabled(isScanning)
+
+            scanFooter
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: - Helpers
+    @ViewBuilder
+    private var scanFooter: some View {
+        switch importer.phase {
+        case .idle:
+            EmptyView()
+        case .requestingAuth:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("正在请求相册权限…").font(.caption)
+            }
+        case .scanning(let p, let t):
+            ProgressView(value: Double(p), total: Double(max(t, 1))) {
+                Text("正在扫描 \(p)/\(t)").font(.caption2)
+            }
+            .progressViewStyle(.linear)
+        case .geocoding(let p, let t):
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("反查地名 \(p)/\(t)…").font(.caption)
+            }
+        case .finished(let inserted, _, let notDownloaded):
+            VStack(alignment: .leading, spacing: 4) {
+                Text("扫描完成：新增 \(inserted) 张")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                if notDownloaded > 0 {
+                    Text("\(notDownloaded) 张未下载到本地，跳过。下次连 iCloud 时这些照片会自动下到设备，再扫一次就能补上。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .failed(let msg):
+            Text(msg)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
 
-    private var isImporting: Bool {
+    private var scanButtonText: String {
+        switch importer.phase {
+        case .scanning: return "扫描中…"
+        case .requestingAuth: return "请求权限中…"
+        case .geocoding: return "处理中…"
+        default: return photos.isEmpty ? "开始扫描" : "重新扫描"
+        }
+    }
+
+    private var isScanning: Bool {
+        switch importer.phase {
+        case .scanning, .requestingAuth, .geocoding: return true
+        default: return false
+        }
+    }
+
+    // MARK: - Picker (secondary)
+
+    private var pickerCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "hand.point.up.left")
+                    .font(.title3)
+                    .foregroundStyle(.blue)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("从相册手动选")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("适合补几张特定照片，比如刚刚拍的")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            Button {
+                isPickerPresented = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "photo.badge.plus")
+                    Text("打开相册选择器")
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption2)
+                }
+                .font(.subheadline)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.blue.opacity(0.10))
+                .foregroundStyle(.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isPickerImporting)
+
+            pickerStatusFooter
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var pickerStatusFooter: some View {
+        switch pickerImporter.phase {
+        case .idle, .failed:
+            EmptyView()
+        case .importing(let p, let t):
+            ProgressView(value: Double(p), total: Double(max(t, 1))) {
+                Text("导入 \(p)/\(t)").font(.caption2)
+            }
+            .progressViewStyle(.linear)
+        case .geocoding(let p, let t):
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("反查地名 \(p)/\(t)…").font(.caption)
+            }
+        case .finished(let inserted, let skipped, let beforeBirthday):
+            VStack(alignment: .leading, spacing: 2) {
+                Text("已添加 \(inserted) 张")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                if let skipText = skippedSummary(skipped: skipped, beforeBirthday: beforeBirthday) {
+                    Text(skipText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var isPickerImporting: Bool {
         switch pickerImporter.phase {
         case .importing, .geocoding: return true
         default: return false
         }
     }
+
+    // MARK: - Helpers
 
     private func runPickerImport(_ identifiers: [String]) async {
         guard !identifiers.isEmpty else { return }

@@ -52,8 +52,14 @@ enum PhotoLibraryService {
 
     /// 请求一张用于分析的中等尺寸 CGImage。
     /// 选 512 px 做 Vision 分析足够，再大只是浪费内存与 CPU。
+    /// **不联网**：iCloud-only 的照片会立刻返回 nil（避免下载卡死扫描）。
+    /// 用户后续把照片下载到本地后，再扫描一次即可补上。
     static func requestAnalysisImage(for asset: PHAsset) async -> CGImage? {
-        guard let uiImage = await requestImage(for: asset, targetSize: CGSize(width: 512, height: 512)) else {
+        guard let uiImage = await requestImage(
+            for: asset,
+            targetSize: CGSize(width: 512, height: 512),
+            allowsNetwork: false
+        ) else {
             return nil
         }
         guard let sourceCG = uiImage.cgImage else { return nil }
@@ -107,8 +113,9 @@ enum PhotoLibraryService {
     // MARK: - 视频
 
     /// 从视频 PHAsset 提取一帧封面图用于 Vision 分析（512px）。
+    /// **不联网**，iCloud-only 视频直接跳过。
     static func requestVideoAnalysisImage(for asset: PHAsset) async -> CGImage? {
-        guard let avAsset = await requestAVAsset(for: asset) else { return nil }
+        guard let avAsset = await requestAVAsset(for: asset, allowsNetwork: false) else { return nil }
         let generator = AVAssetImageGenerator(asset: avAsset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 512, height: 512)
@@ -120,13 +127,17 @@ enum PhotoLibraryService {
     }
 
     /// 请求视频的 AVAsset（用于播放或帧提取）。
-    static func requestAVAsset(for asset: PHAsset) async -> AVAsset? {
+    /// `allowsNetwork=false` 时 iCloud-only 视频会立刻返回 nil，不下载。
+    static func requestAVAsset(
+        for asset: PHAsset,
+        allowsNetwork: Bool = true
+    ) async -> AVAsset? {
         let holder = RequestIDHolder()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 let gate = ContinuationGate()
                 let options = PHVideoRequestOptions()
-                options.isNetworkAccessAllowed = true
+                options.isNetworkAccessAllowed = allowsNetwork
                 options.deliveryMode = .automatic
 
                 let id = PHImageManager.default().requestAVAsset(
@@ -186,14 +197,15 @@ enum PhotoLibraryService {
     private static func requestImage(
         for asset: PHAsset,
         targetSize: CGSize,
-        deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic
+        deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic,
+        allowsNetwork: Bool = true
     ) async -> UIImage? {
         let holder = RequestIDHolder()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 let gate = ContinuationGate()
                 let options = PHImageRequestOptions()
-                options.isNetworkAccessAllowed = true
+                options.isNetworkAccessAllowed = allowsNetwork
                 // 导入 / 分析路径要求只拿一次最终图：opportunistic 会先回调低清图
                 // 再回调高清图，这种多次回调 + 我们之前用 `var didResume = false`
                 // 跨线程更新的写法存在竞态，可能双重 resume → EXC_BAD_ACCESS。
