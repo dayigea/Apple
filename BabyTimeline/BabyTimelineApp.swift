@@ -15,6 +15,7 @@ struct BabyTimelineApp: App {
                 Milestone.self,
                 GrowthRecord.self,
                 PediatricRecord.self,
+                BabyWord.self,
             ])
             let config = ModelConfiguration(
                 schema: schema,

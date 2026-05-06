@@ -52,6 +52,8 @@ targets:
           用来把宝宝的照片保留在相册里，App 不会修改任何已有照片。
         NSLocationWhenInUseUsageDescription: >-
           用来把照片里的 GPS 信息转换成可读的地点名称，便于回忆。
+        NSMicrophoneUsageDescription: >-
+          用来录下宝宝说的萌句，存到「宝宝词典」里以后翻看回忆。录音只保存在你的手机本地。
     entitlements:
       path: BabyTimeline/BabyTimeline.entitlements
     dependencies:

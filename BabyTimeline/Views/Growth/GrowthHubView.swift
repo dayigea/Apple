@@ -65,6 +65,17 @@ struct GrowthHubView: View {
                     }
 
                     NavigationLink {
+                        BabyDictionaryView()
+                    } label: {
+                        FeatureRow(
+                            icon: "text.bubble",
+                            color: .teal,
+                            title: "宝宝词典",
+                            subtitle: "记下宝宝的萌句和口头禅，可附 30 秒录音"
+                        )
+                    }
+
+                    NavigationLink {
                         FoodGuideView(baby: baby)
                     } label: {
                         FeatureRow(

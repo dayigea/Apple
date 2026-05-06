@@ -114,7 +114,7 @@ struct TimeCapsuleProvider: TimelineProvider {
         widgetLog.info("Widget loadData — sharedContainer=\(AppGroup.isUsingSharedContainer, privacy: .public) store=\(storeURL.path, privacy: .public) exists=\(FileManager.default.fileExists(atPath: storeURL.path), privacy: .public)")
 
         do {
-            let schema = Schema([Baby.self, PhotoEntry.self, Milestone.self, GrowthRecord.self, PediatricRecord.self])
+            let schema = Schema([Baby.self, PhotoEntry.self, Milestone.self, GrowthRecord.self, PediatricRecord.self, BabyWord.self])
             let config = ModelConfiguration(
                 schema: schema,
                 url: storeURL,
