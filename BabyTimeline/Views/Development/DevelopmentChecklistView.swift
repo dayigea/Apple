@@ -183,7 +183,7 @@ struct DevelopmentChecklistView: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
                     .font(.body)
-                    .foregroundStyle(isDone ? tint : .tertiary)
+                    .foregroundStyle(isDone ? tint : Color.secondary.opacity(0.4))
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
