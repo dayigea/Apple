@@ -12,6 +12,7 @@ struct TodayView: View {
     @Query private var babyWords: [BabyWord]
 
     @State private var refreshTrigger = UUID()
+    @State private var showingAddWord = false
 
     private var digest: DailyDigest {
         DailyDigestService.compute(
@@ -27,19 +28,25 @@ struct TodayView: View {
             ScrollView {
                 VStack(spacing: 14) {
                     headerCard
+                    quickActionsRow
                     if let meal = digest.mealSuggestion {
                         mealCard(meal)
                     }
                     if !digest.developmentTips.isEmpty {
                         developmentCard
+                    } else {
+                        developmentEmptyCard
                     }
                     if !digest.pediatricDue.isEmpty {
                         pediatricCard
                     }
                     if !digest.photoMemories.isEmpty {
                         memoryCard
+                    } else if photos.isEmpty {
+                        memoryEmptyCard
                     }
                     wordsCard
+                    reflectionCard
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -48,6 +55,11 @@ struct TodayView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("今日宝宝")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showingAddWord) {
+                NavigationStack {
+                    BabyDictionaryEditView(word: nil)
+                }
+            }
             .refreshable {
                 refreshTrigger = UUID()
             }
@@ -97,6 +109,182 @@ struct TodayView: View {
         case 18..<22: return "晚上好 🌙"
         default: return "夜深了 🌃"
         }
+    }
+
+    // MARK: - Quick actions
+
+    private var quickActionsRow: some View {
+        HStack(spacing: 10) {
+            quickButton(icon: "text.bubble.fill", title: "记萌句", tint: .teal) {
+                showingAddWord = true
+            }
+            NavigationLink {
+                PediatricView(baby: baby)
+            } label: {
+                quickButtonContent(icon: "stethoscope", title: "查体检", tint: .pink)
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                GrowthChartView(baby: baby)
+            } label: {
+                quickButtonContent(icon: "ruler.fill", title: "记测量", tint: .indigo)
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                FoodGuideView(baby: baby)
+            } label: {
+                quickButtonContent(icon: "fork.knife", title: "看食谱", tint: .green)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func quickButton(
+        icon: String,
+        title: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            quickButtonContent(icon: icon, title: title, tint: tint)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func quickButtonContent(icon: String, title: String, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Empty states
+
+    private var developmentEmptyCard: some View {
+        NavigationLink {
+            DevelopmentChecklistView(baby: baby)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.title3)
+                    .foregroundStyle(.purple)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("当前阶段全部勾完了！")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Text("看看下一个月龄会有什么变化")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var memoryEmptyCard: some View {
+        NavigationLink {
+            SettingsView(baby: baby)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.title3)
+                    .foregroundStyle(.indigo)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("还没有照片")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Text("去设置 → 宝宝照片 导入相册，「那时候」才能给你回忆")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 每日反思
+
+    private var reflectionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "lightbulb")
+                    .foregroundStyle(.yellow)
+                Text("今天聊聊")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
+            Text(dailyPrompt)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .padding(.vertical, 4)
+            Button {
+                showingAddWord = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.pencil")
+                    Text("记下来")
+                }
+                .font(.caption)
+                .fontWeight(.medium)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.yellow.opacity(0.18))
+                .foregroundStyle(.orange)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var dailyPrompt: String {
+        let prompts = [
+            "宝宝今天最爱玩什么？",
+            "今天有没有说一句让你忍不住笑的话？",
+            "今天宝宝最让你欣慰的瞬间是什么？",
+            "今天有没有发现宝宝又会了一件新事？",
+            "今天的午睡多长？精神怎么样？",
+            "今天宝宝最爱吃的菜是？",
+            "今天和宝宝出门去了哪里？",
+            "宝宝今天的情绪如何？为什么？",
+            "今天宝宝最喜欢的绘本/玩具是？",
+            "今天是不是有了第一次的什么？",
+            "今天和家里谁玩得最开心？",
+        ]
+        let day = Calendar.current.dateComponents([.year, .dayOfYear], from: .now)
+        let seed = (day.year ?? 0) * 366 + (day.dayOfYear ?? 0)
+        return prompts[seed % prompts.count]
     }
 
     // MARK: - 三餐推荐

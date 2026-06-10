@@ -78,6 +78,18 @@ struct SettingsView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
+                DailyReminderView(baby: baby)
+            } label: {
+                SettingsCard(
+                    icon: "bell.badge.fill",
+                    title: "每日提醒",
+                    subtitle: reminderSubtitle,
+                    tint: .yellow
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
                 AboutView(photoCount: photos.count, milestoneCount: milestones.count)
             } label: {
                 SettingsCard(
@@ -96,6 +108,13 @@ struct SettingsView: View {
             return "还没有导入照片"
         }
         return "\(photos.count) 张已导入"
+    }
+
+    private var reminderSubtitle: String {
+        if !DailyNotificationScheduler.isEnabled { return "未开启" }
+        let h = DailyNotificationScheduler.reminderHour
+        let m = DailyNotificationScheduler.reminderMinute
+        return String(format: "每天 %02d:%02d", h, m)
     }
 }
 
