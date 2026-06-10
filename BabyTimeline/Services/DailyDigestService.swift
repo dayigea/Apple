@@ -235,3 +235,45 @@ private struct SeededRandomGenerator {
         return state
     }
 }
+
+// MARK: - 连续打开天数
+
+/// 用户连续打开 App 的天数追踪，纯 UserDefaults，不影响主数据。
+enum OpenStreak {
+    private static let lastDateKey = "openStreak.lastDate"
+    private static let countKey = "openStreak.count"
+    private static let promptDismissedKey = "openStreak.notifPromptDismissed"
+
+    static var count: Int {
+        UserDefaults.standard.integer(forKey: countKey)
+    }
+
+    static var notifPromptDismissed: Bool {
+        get { UserDefaults.standard.bool(forKey: promptDismissedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: promptDismissedKey) }
+    }
+
+    /// 在 TodayView 出现时调用。返回更新后的天数。
+    @discardableResult
+    static func recordOpen(now: Date = .now) -> Int {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        guard let last = UserDefaults.standard.object(forKey: lastDateKey) as? Date else {
+            UserDefaults.standard.set(today, forKey: lastDateKey)
+            UserDefaults.standard.set(1, forKey: countKey)
+            return 1
+        }
+        let lastDay = cal.startOfDay(for: last)
+        if lastDay == today { return count }
+        let dayDiff = cal.dateComponents([.day], from: lastDay, to: today).day ?? 0
+        let newCount: Int
+        if dayDiff == 1 {
+            newCount = count + 1
+        } else {
+            newCount = 1
+        }
+        UserDefaults.standard.set(today, forKey: lastDateKey)
+        UserDefaults.standard.set(newCount, forKey: countKey)
+        return newCount
+    }
+}

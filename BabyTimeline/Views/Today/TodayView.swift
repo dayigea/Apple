@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 /// 主页：今日宝宝 dashboard。
 /// 打开 App 就能看到——三餐、本周学习目标、待办、那时候的照片、最近萌句。
@@ -13,6 +14,9 @@ struct TodayView: View {
 
     @State private var refreshTrigger = UUID()
     @State private var showingAddWord = false
+    @State private var streakCount = 0
+    @State private var showNotifBanner = false
+    @State private var permissionStatus: UNAuthorizationStatus = .notDetermined
 
     private var digest: DailyDigest {
         DailyDigestService.compute(
@@ -28,6 +32,9 @@ struct TodayView: View {
             ScrollView {
                 VStack(spacing: 14) {
                     headerCard
+                    if showNotifBanner {
+                        notifBanner
+                    }
                     quickActionsRow
                     if let meal = digest.mealSuggestion {
                         mealCard(meal)
@@ -63,6 +70,14 @@ struct TodayView: View {
             .refreshable {
                 refreshTrigger = UUID()
             }
+            .task {
+                streakCount = OpenStreak.recordOpen()
+                permissionStatus = await DailyNotificationScheduler.currentAuthorizationStatus()
+                showNotifBanner = !DailyNotificationScheduler.isEnabled
+                    && !OpenStreak.notifPromptDismissed
+                    && permissionStatus != .denied
+                    && streakCount >= 2
+            }
         }
     }
 
@@ -77,9 +92,28 @@ struct TodayView: View {
             return f.string(from: .now)
         }()
         return VStack(alignment: .leading, spacing: 6) {
-            Text(greeting)
-                .font(.title2)
-                .fontWeight(.bold)
+            HStack(alignment: .firstTextBaseline) {
+                Text(greeting)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                if streakCount >= 2 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "flame.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                        Text("\(streakCount) 天")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.orange)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.14))
+                    .clipShape(Capsule())
+                }
+            }
             HStack(spacing: 8) {
                 Text(weekday)
                 Text("·")
@@ -98,6 +132,81 @@ struct TodayView: View {
             )
         )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - 通知 opt-in banner
+
+    private var notifBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "bell.badge.fill")
+                .font(.title3)
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("每天准时提醒一下？")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text("固定时间推送当天的三餐建议、可学的发育目标和体检待办。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button {
+                        Task { await enableNotifications() }
+                    } label: {
+                        Text("好，开启")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.accentColor)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        OpenStreak.notifPromptDismissed = true
+                        withAnimation { showNotifBanner = false }
+                    } label: {
+                        Text("不用了")
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color(.tertiarySystemGroupedBackground))
+                            .foregroundStyle(.secondary)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [Color.yellow.opacity(0.18), Color.orange.opacity(0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private func enableNotifications() async {
+        let granted = await DailyNotificationScheduler.requestPermission()
+        if granted {
+            DailyNotificationScheduler.isEnabled = true
+            await DailyNotificationScheduler.rescheduleIfNeeded(
+                baby: baby,
+                pediatricRecords: pediatricRecords,
+                babyWords: babyWords,
+                photos: photos
+            )
+            OpenStreak.notifPromptDismissed = true
+            withAnimation { showNotifBanner = false }
+            let gen = UINotificationFeedbackGenerator()
+            gen.notificationOccurred(.success)
+        }
     }
 
     private var greeting: String {
@@ -481,26 +590,47 @@ struct TodayView: View {
             }
             HStack(spacing: 10) {
                 ForEach(digest.photoMemories) { mem in
-                    VStack(alignment: .leading, spacing: 4) {
-                        AsyncPHAssetImage(localIdentifier: mem.assetLocalId, size: .thumbnail(160))
-                            .aspectRatio(1, contentMode: .fill)
-                            .frame(maxWidth: .infinity)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        Text(mem.label)
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                        Text(mem.ageAtThen)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                    memoryItem(mem)
                 }
             }
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func memoryItem(_ mem: DailyDigest.PhotoMemory) -> some View {
+        let entry = photos.first { $0.assetLocalId == mem.assetLocalId }
+        Group {
+            if let entry {
+                NavigationLink {
+                    PhotoDetailView(baby: baby, entry: entry)
+                } label: {
+                    memoryContent(mem)
+                }
+                .buttonStyle(.plain)
+            } else {
+                memoryContent(mem)
+            }
+        }
+    }
+
+    private func memoryContent(_ mem: DailyDigest.PhotoMemory) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            AsyncPHAssetImage(localIdentifier: mem.assetLocalId, size: .thumbnail(160))
+                .aspectRatio(1, contentMode: .fill)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text(mem.label)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+            Text(mem.ageAtThen)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - 最近萌句
